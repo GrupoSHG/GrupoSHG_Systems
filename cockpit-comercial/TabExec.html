@@ -174,6 +174,7 @@ function KpiStrip() {
   const mesActual = new Date().getMonth();
   const nombreMes = mesesLabels[mesActual];
   const cumpl = k.facturado / k.presupuesto * 100;
+  const cumplNV   = k.presupuesto > 0 ? (k.nv / k.presupuesto) * 100 : 0;
   const cumplProy = (k.forecast_fact || k.forecast_mes || 0) / k.presupuesto * 100;
   const diaHoy = new Date().getDate();
   const diasHabilesPasados = Math.floor(diaHoy * (21/30));
@@ -196,8 +197,16 @@ function KpiStrip() {
       <div className="kpi-cell">
         <div className="kpi-label">NV Emitidas MTD</div>
         <div className="kpi-value mono">{fmtM(k.nv)}<span className="unit">M$</span></div>
-        <div className="kpi-meta"><span className="text-3">Backlog NV→Fact</span><span className="mono fw-6">{fmtM(k.backlog_nv)}M$</span></div>
-        <div className="kpi-bar"><div style={{width: (k.nv/k.presupuesto*100)+'%'}}></div></div>
+        <div className="kpi-meta">
+          <span className={`badge ${cumplNV>=100?'green':cumplNV>=80?'amber':'red'}`}>{fmtPctSimple(cumplNV)}</span>
+          <span className="text-3">vs presup.</span>
+        </div>
+        <div className={`kpi-bar ${cumplNV>=100?'good':cumplNV>=80?'warn':'bad'}`}>
+          <div style={{width: Math.min(cumplNV,100)+'%'}}></div>
+        </div>
+        <div className="kpi-meta mt-1" style={{fontSize:9, color:'var(--text-3)'}}>
+          <span>Backlog NV→Fact: {fmtM(k.backlog_nv)}M$</span>
+        </div>
       </div>
       <div className="kpi-cell">
         <div className="kpi-label">Cotizado MTD</div>
