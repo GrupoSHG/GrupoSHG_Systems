@@ -193,13 +193,7 @@ function getWipAcero() {
         meses_restantes, fecha_agotamiento, urgencia });
     }
 
-    const ord = { critico:0, alerta:1, ok:2, sin_consumo:3 };
-    resultado.sort((a,b) => {
-      if (ord[a.urgencia] !== ord[b.urgencia]) return ord[a.urgencia]-ord[b.urgencia];
-      if (a.meses_restantes===null) return 1;
-      if (b.meses_restantes===null) return -1;
-      return a.meses_restantes - b.meses_restantes;
-    });
+    resultado.sort((a, b) => b.consumo_mes_kg - a.consumo_mes_kg);
 
     return { items: resultado };
   } catch(e) {
