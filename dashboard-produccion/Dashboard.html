@@ -205,6 +205,7 @@ function App() {
   const [inventario,       setInventario]       = useState({ acero:[], pol:[], kpiAcero:{}, kpiPol:{} });
   const [m2Ayer,           setM2Ayer]           = useState({ total:0, fecha:'' });
   const [wipAcero,         setWipAcero]         = useState({ items:[] });
+  const [frecuenciaAcero,  setFrecuenciaAcero]  = useState(30);
   const [m2PSA,            setM2PSA]            = useState({ ayer:{total:0,pc4:0,bandejera:0,fecha:''}, mes:{total:0,pc4:0,bandejera:0} });
 
   const fetchData = () => {
@@ -627,53 +628,176 @@ function App() {
         </div>
 
         {/* Tabla calendario */}
-        <div className="card" style={{padding:0, overflow:'hidden', marginBottom:30}}>
+        <div className="card" style={{padding:0, overflow:'hidden', marginBottom:16}}>
           <div style={{padding:'14px 22px', borderBottom:'1px solid var(--border)', background:'var(--surface-2)', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
             <b style={{fontSize:13}}>Proyección de Agotamiento · Aceros con Stock</b>
-            <span style={{fontSize:11, color:'var(--text-3)'}}>Ordenado por urgencia</span>
+            <span style={{fontSize:11, color:'var(--text-3)'}}>Ordenado por consumo mensual</span>
           </div>
-          <div style={{maxHeight:480, overflowY:'auto'}}>
+          <div style={{maxHeight:460, overflowY:'auto'}}>
             <table>
               <thead>
                 <tr>
-                  <th style={{paddingLeft:22, width:130}}>Código</th>
+                  <th style={{paddingLeft:22, width:120}}>Código</th>
                   <th>Descripción</th>
-                  <th style={{textAlign:'right'}}>Stock Físico (kg)</th>
                   <th style={{textAlign:'right'}}>Consumo/Mes (kg)</th>
-                  <th style={{textAlign:'center', width:140}}>Duración estimada</th>
-                  <th style={{textAlign:'center', width:120}}>Se agota</th>
+                  <th style={{textAlign:'right'}}>Stock Físico (kg)</th>
+                  <th style={{textAlign:'right'}}>Por Entregar (kg)</th>
+                  <th style={{textAlign:'right'}}>Saldo (kg)</th>
+                  <th style={{textAlign:'center', width:110}}>Quiebre Stock Actual</th>
+                  <th style={{textAlign:'right'}}>Por Llegar (kg)</th>
+                  <th style={{textAlign:'center', width:110}}>Quiebre c/ Importación</th>
+                  <th style={{textAlign:'center', width:120}}>⚠ Comprar antes de</th>
                   <th style={{textAlign:'center', width:80}}>Estado</th>
                 </tr>
               </thead>
               <tbody>
                 {items.map((r,i) => {
-                  const pct = barPct(r.meses_restantes);
-                  const bc  = barColor(r.urgencia);
+                  const pct      = barPct(r.meses_restantes);
+                  const bc       = barColor(r.urgencia);
+                  const saldoNeg = (r.saldo||0) < 0;
+
+                  // --- VARIABLES COMPARTIDAS PARA CÁLCULOS EXACTOS DE FECHA ---
+                  const tieneConsumo = r.consumo_mes_kg > 0;
+                  const hoy = new Date();
+                  const diasEnMes = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate();
+                  const consumoDiario = tieneConsumo ? (r.consumo_mes_kg / diasEnMes) : 0;
+
+                  // CONSTANTE LOGÍSTICA: Días que tarda en llegar la importación
+                  const DIAS_PARA_IMPORTACION = 45;
+
                   return (
-                    <tr key={i} style={{background: r.urgencia==='critico' ? '#FFF5F5' : r.urgencia==='alerta' ? '#FFFBEB' : r.urgencia==='sin_consumo' ? '#F9FAFB' : 'transparent'}}>
+                    <tr key={i} style={{background: r.urgencia==='critico'?'#FFF5F5':r.urgencia==='alerta'?'#FFFBEB':r.urgencia==='sin_consumo'?'#F9FAFB':'transparent'}}>
                       <td style={{paddingLeft:22, fontFamily:'monospace', fontSize:10, color:'var(--text-3)'}}>{r.codigo}</td>
-                      <td style={{maxWidth:220, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', fontSize:11.5}} title={r.descripcion}>{r.descripcion}</td>
-                      <td style={{textAlign:'right', fontFamily:'monospace', fontWeight:600}}>{(r.stk_fisico||0).toLocaleString('es-CL',{maximumFractionDigits:1})}</td>
-                      <td style={{textAlign:'right', fontFamily:'monospace', color: r.consumo_mes_kg>0?'var(--text-2)':'var(--text-3)'}}>
-                        {r.consumo_mes_kg > 0 ? (r.consumo_mes_kg).toLocaleString('es-CL',{maximumFractionDigits:1}) : '—'}
+                      <td style={{maxWidth:190, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', fontSize:11.5}} title={r.descripcion}>{r.descripcion}</td>
+                      <td style={{textAlign:'right', fontFamily:'monospace', fontWeight:700, color:'var(--text-2)'}}>
+                        {tieneConsumo ? r.consumo_mes_kg.toLocaleString('es-CL',{maximumFractionDigits:1}) : '—'}
                       </td>
-                      <td style={{paddingRight:12}}>
-                        <div style={{display:'flex', alignItems:'center', gap:8}}>
-                          <div style={{flex:1, height:6, background:'#E5E7EB', borderRadius:3, overflow:'hidden'}}>
-                            <div style={{width:pct+'%', height:'100%', background:bc, borderRadius:3, transition:'width 0.5s'}}/>
-                          </div>
-                          <span style={{fontSize:11, fontWeight:700, color:bc, whiteSpace:'nowrap', minWidth:60, textAlign:'right'}}>
-                            {fmtMeses(r.meses_restantes ?? null)}
-                          </span>
-                        </div>
+                      <td style={{textAlign:'right', fontFamily:'monospace'}}>{(r.stk_fisico||0).toLocaleString('es-CL',{maximumFractionDigits:1})}</td>
+                      <td style={{textAlign:'right', fontFamily:'monospace', color:(r.por_entregar||0)>0?'var(--coral)':'var(--text-3)'}}>
+                        {(r.por_entregar||0)>0 ? r.por_entregar.toLocaleString('es-CL',{maximumFractionDigits:1}) : '—'}
                       </td>
-                      <td style={{textAlign:'center', fontFamily:'monospace', fontSize:11, fontWeight:700, color:urgColor(r.urgencia)}}>
-                        {r.fecha_agotamiento || '—'}
+                      <td style={{textAlign:'right', fontFamily:'monospace', fontWeight:600, color:saldoNeg?'var(--coral)':'var(--purp)', background:saldoNeg?'#FEE2E2':'transparent'}}>
+                        {(r.saldo||0).toLocaleString('es-CL',{maximumFractionDigits:1})}
                       </td>
+                      
+                      {/* 1. QUIEBRE STOCK ACTUAL (BASADO EN STOCK FÍSICO) */}
+                      <td style={{textAlign:'center', fontSize:11, fontWeight:600}}>
+                        {(() => {
+                          if (!tieneConsumo) return <span style={{color:'var(--text-3)'}}>—</span>;
+
+                          // Ahora consumimos el Stock Físico en vez del saldo
+                          const diasFisicoActual = Math.max(0, Math.round((r.stk_fisico || 0) / consumoDiario));
+                          const fechaActual = new Date(hoy);
+                          fechaActual.setDate(hoy.getDate() + diasFisicoActual);
+                          const fStrActual = fechaActual.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+                          const esNegActual = diasFisicoActual <= 0;
+                          const esCriticoActual = diasFisicoActual > 0 && diasFisicoActual <= 30;
+
+                          const bg = esNegActual ? '#FEE2E2' : esCriticoActual ? '#FEF3C7' : '#F3F4F6';
+                          const tx = esNegActual ? '#B91C1C' : esCriticoActual ? '#92400E' : '#374151';
+
+                          return (
+                            <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 6, fontSize: 10, fontWeight: 700, background: bg, color: tx, whiteSpace: 'nowrap' }}>
+                              {esNegActual ? `🚨 Agotado el ${fStrActual}` : fStrActual}
+                            </span>
+                          );
+                        })()}
+                      </td>
+                      
+                      <td style={{textAlign:'right', fontFamily:'monospace', color:(r.por_llegar||0)>0?'#2563EB':'var(--text-3)', fontWeight:(r.por_llegar||0)>0?600:400}}>
+                        {(r.por_llegar||0)>0 ? r.por_llegar.toLocaleString('es-CL',{maximumFractionDigits:1}) : '—'}
+                      </td>
+                      
+                      {/* 2. QUIEBRE C/ IMPORTACIÓN (LÓGICA CRONOLÓGICA CON STOCK FÍSICO) */}
+                      <td style={{textAlign:'center', fontSize:11, fontWeight:600}}>
+                        {(() => {
+                          if (!tieneConsumo) return <span style={{color:'var(--text-3)'}}>—</span>;
+
+                          const fisicoBase = r.stk_fisico || 0;
+                          const consumoEn45Dias = consumoDiario * DIAS_PARA_IMPORTACION;
+                          
+                          // Calculamos el stock físico remanente en el día 45
+                          const remanenteDia45 = fisicoBase - consumoEn45Dias;
+
+                          // Inyección de stock por llegada al día 45
+                          const stockTotalDia45 = remanenteDia45 + (r.por_llegar || 0);
+
+                          let diasTotalesProyectados = 0;
+
+                          if (fisicoBase <= 0) {
+                            // Si el físico hoy es 0, la importación salva la situación a partir del día 45
+                            const diasImportacion = Math.round((r.por_llegar || 0) / consumoDiario);
+                            diasTotalesProyectados = DIAS_PARA_IMPORTACION + diasImportacion;
+                          } else {
+                            // Ver si el stock físico aguanta los 45 días
+                            const diasDuraFisicoActual = Math.round(fisicoBase / consumoDiario);
+
+                            if (diasDuraFisicoActual < DIAS_PARA_IMPORTACION) {
+                              // Quiebra antes del día 45 físicamente.
+                              const diasImportacion = Math.round((r.por_llegar || 0) / consumoDiario);
+                              diasTotalesProyectados = DIAS_PARA_IMPORTACION + diasImportacion;
+                            } else {
+                              // El stock físico dura más de 45 días, sumamos remanente + llegada.
+                              const diasExtraImportacion = Math.round(stockTotalDia45 / consumoDiario);
+                              diasTotalesProyectados = diasExtraImportacion;
+                            }
+                          }
+
+                          const diasFinales = Math.max(0, diasTotalesProyectados);
+
+                          const fechaImportacion = new Date(hoy);
+                          fechaImportacion.setDate(hoy.getDate() + diasFinales);
+                          const fStrImportacion = fechaImportacion.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+                          const esNegImportacion = diasFinales <= 0;
+                          const esCriticoImportacion = diasFinales > 0 && diasFinales <= 30;
+
+                          const bg = esNegImportacion ? '#FEE2E2' : esCriticoImportacion ? '#FEF3C7' : '#F3F4F6';
+                          const tx = esNegImportacion ? '#B91C1C' : esCriticoImportacion ? '#92400E' : '#374151';
+
+                          return (
+                            <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 6, fontSize: 10, fontWeight: 700, background: bg, color: tx, whiteSpace: 'nowrap' }}>
+                              {esNegImportacion ? `🚨 Agotado el ${fStrImportacion}` : fStrImportacion}
+                            </span>
+                          );
+                        })()}
+                      </td>
+                      
+                      {/* 3. FECHA LÍMITE DE COMPRA (BASADA EN STOCK FÍSICO + POR LLEGAR) */}
+                      {(() => {
+                        const LEAD_DAYS = 90;
+                        if (!tieneConsumo) {
+                          return <td style={{textAlign:'center', color:'var(--text-3)'}}>—</td>;
+                        }
+                        
+                        const stockTotalFisico = (r.stk_fisico || 0) + (r.por_llegar || 0);
+                        const diasStock    = Math.round(stockTotalFisico / consumoDiario);
+                        const diasCompra   = diasStock - LEAD_DAYS;
+                        
+                        const fechaCompra  = new Date(hoy);
+                        fechaCompra.setDate(hoy.getDate() + diasCompra);
+                        const fcStr = fechaCompra.toLocaleDateString('es-CL',{day:'2-digit',month:'2-digit',year:'numeric'});
+                        
+                        const esUrgente  = diasCompra <= 0;
+                        const esPronto   = diasCompra > 0 && diasCompra <= 30;
+                        
+                        const bgColor    = esUrgente ? '#FEE2E2' : esPronto ? '#FEF3C7' : '#DCFCE7';
+                        const txColor    = esUrgente ? '#B91C1C' : esPronto ? '#92400E' : '#15803D';
+                        const label      = esUrgente ? '🚨 AHORA' : esPronto ? '⚡ ' + fcStr : fcStr;
+                        
+                        return (
+                          <td style={{textAlign:'center'}}>
+                            <span style={{display:'inline-block', padding:'3px 10px', borderRadius:8, fontSize:10, fontWeight:700, background:bgColor, color:txColor, whiteSpace:'nowrap'}}>
+                              {label}
+                            </span>
+                            {esUrgente && <div style={{fontSize:9, color:'#B91C1C', marginTop:2}}>hace {Math.abs(diasCompra)}d</div>}
+                          </td>
+                        );
+                      })()}
                       <td style={{textAlign:'center'}}>
-                        <span style={{display:'inline-block', padding:'2px 8px', borderRadius:10, fontSize:9, fontWeight:700,
-                          background:urgBg(r.urgencia||'ok'), color:urgColor(r.urgencia||'ok')}}>
-                          {urgTxt(r.urgencia)}
+                        <span style={{display:'inline-block', padding:'2px 8px', borderRadius:10, fontSize:9, fontWeight:700, background:urgBg(r.urgencia||'ok'), color:urgColor(r.urgencia||'ok')}}>
+                          {urgTxt(r.urgencia||'ok')}
                         </span>
                       </td>
                     </tr>
@@ -683,10 +807,107 @@ function App() {
             </table>
           </div>
         </div>
+
+        {/* ── Bloque Estimación de Importación ── */}
+        {(() => {
+          const frecuencia     = frecuenciaAcero;
+          const setFrecuencia  = setFrecuenciaAcero;
+          const frecOpciones = [
+            {dias:30,  label:'Mensual (30d)'},
+            {dias:60,  label:'60 días'},
+            {dias:90,  label:'90 días'},
+            {dias:120, label:'120 días'},
+          ];
+          const mesesCompra      = frecuencia / 30.44;
+          const itemsConConsumo  = items.filter(r => r.consumo_mes_kg > 0);
+          const totalCompraKg    = itemsConConsumo.reduce((acc,r) => acc + r.consumo_mes_kg * mesesCompra, 0);
+          const fechaProxima     = (() => { const d=new Date(); d.setDate(d.getDate()+frecuencia); return d.toLocaleDateString('es-CL',{day:'2-digit',month:'2-digit',year:'numeric'}); })();
+
+          return (
+            <div className="card" style={{marginBottom:30}}>
+              {/* Header con botones */}
+              <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16, flexWrap:'wrap', gap:12}}>
+                <div>
+                  <b style={{fontSize:13}}>Estimación de Importación</b>
+                  <div style={{fontSize:11, color:'var(--text-3)', marginTop:2}}>Cantidad a comprar según frecuencia · basado en consumo mensual promedio</div>
+                </div>
+                <div style={{display:'flex', gap:8}}>
+                  {frecOpciones.map(op => (
+                    <button key={op.dias} onClick={() => setFrecuencia(op.dias)}
+                      style={{padding:'6px 14px', borderRadius:8, border:'1px solid var(--border)',
+                        background:frecuencia===op.dias?'var(--text)':'var(--surface)',
+                        color:frecuencia===op.dias?'#fff':'var(--text-2)',
+                        fontWeight:frecuencia===op.dias?700:400,
+                        fontSize:12, cursor:'pointer'}}>
+                      {op.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* KPIs resumen */}
+              <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:14, marginBottom:16}}>
+                <div style={{background:'var(--surface-2)', borderRadius:10, padding:'14px 18px'}}>
+                  <div style={{fontSize:10, color:'var(--text-3)', fontWeight:600, textTransform:'uppercase', marginBottom:4}}>Período de Compra</div>
+                  <div style={{fontSize:26, fontWeight:700}}>{frecuencia}<span style={{fontSize:13, color:'var(--text-3)', marginLeft:4}}>días</span></div>
+                  <div style={{fontSize:11, color:'var(--text-3)', marginTop:3}}>{mesesCompra.toFixed(1)} meses de stock</div>
+                </div>
+                <div style={{background:'var(--surface-2)', borderRadius:10, padding:'14px 18px'}}>
+                  <div style={{fontSize:10, color:'var(--text-3)', fontWeight:600, textTransform:'uppercase', marginBottom:4}}>Total a Importar</div>
+                  <div style={{fontSize:26, fontWeight:700, color:'var(--acero)'}}>{Math.round(totalCompraKg).toLocaleString('es-CL')}<span style={{fontSize:13, color:'var(--text-3)', marginLeft:4}}>kg</span></div>
+                  <div style={{fontSize:11, color:'var(--text-3)', marginTop:3}}>{itemsConConsumo.length} referencias con consumo registrado</div>
+                </div>
+                <div style={{background:'var(--surface-2)', borderRadius:10, padding:'14px 18px'}}>
+                  <div style={{fontSize:10, color:'var(--text-3)', fontWeight:600, textTransform:'uppercase', marginBottom:4}}>Próxima Importación</div>
+                  <div style={{fontSize:26, fontWeight:700, color:'var(--purp)'}}>{fechaProxima}</div>
+                  <div style={{fontSize:11, color:'var(--text-3)', marginTop:3}}>en {frecuencia} días más</div>
+                </div>
+              </div>
+
+              {/* Tabla detalle */}
+              <div style={{maxHeight:360, overflowY:'auto'}}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th style={{paddingLeft:12, width:120}}>Código</th>
+                      <th>Descripción</th>
+                      <th style={{textAlign:'right'}}>Consumo/Mes (kg)</th>
+                      <th style={{textAlign:'right'}}>Saldo Actual (kg)</th>
+                      <th style={{textAlign:'right', color:'var(--acero)'}}>A Comprar (kg)</th>
+                      <th style={{textAlign:'center'}}>Durará con compra</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {itemsConConsumo.map((r,i) => {
+                      const aComprar     = Math.round(r.consumo_mes_kg * mesesCompra);
+                      const stockFinal   = (r.saldo||0) + aComprar;
+                      const mesesFinales = r.consumo_mes_kg>0 ? stockFinal/r.consumo_mes_kg : 0;
+                      return (
+                        <tr key={i}>
+                          <td style={{paddingLeft:12, fontFamily:'monospace', fontSize:10, color:'var(--text-3)'}}>{r.codigo}</td>
+                          <td style={{maxWidth:210, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', fontSize:11}} title={r.descripcion}>{r.descripcion}</td>
+                          <td style={{textAlign:'right', fontFamily:'monospace', color:'var(--text-2)'}}>{r.consumo_mes_kg.toLocaleString('es-CL',{maximumFractionDigits:1})}</td>
+                          <td style={{textAlign:'right', fontFamily:'monospace', color:(r.saldo||0)<0?'var(--coral)':'var(--text-2)', fontWeight:(r.saldo||0)<0?700:400}}>
+                            {(r.saldo||0).toLocaleString('es-CL',{maximumFractionDigits:1})}
+                          </td>
+                          <td style={{textAlign:'right', fontFamily:'monospace', fontWeight:700, color:'var(--acero)'}}>
+                            {aComprar.toLocaleString('es-CL')}
+                          </td>
+                          <td style={{textAlign:'center', fontSize:11, fontWeight:600, color: mesesFinales>=3?'var(--purp)':mesesFinales>=1?'#D97706':'var(--coral)'}}>
+                            {mesesFinales.toFixed(1)} meses
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+        })()}
       </>
     );
-  };
-
+  }
   /* ════════════ RENDER ════════════ */
   const ayerV   = m2Ayer.total||0;
   const ayerCol = ayerV<700?'#EF4444':ayerV<1000?'#F59E0B':'#22C55E';

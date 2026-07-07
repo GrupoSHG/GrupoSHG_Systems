@@ -31,9 +31,9 @@ function getWipData() {
     const colCliente   = findCol(["CLIENTE"], "CLIEN");
     const colFechaIn   = findCol(["FECHAIN", "FECHAINGRESO"], "FECHAIN");
 
-    if (colPendiente === -1) return { error: "Falta la columna CANTIDAD_PENDIENTE en el Excel" };
-    if (colBodega    === -1) return { error: "Falta la columna BODEGA_NOMBRE_OP en el Excel" };
-    if (colCodigo    === -1) return { error: "Falta la columna CODIGO_PRODUCTO en el Excel" };
+    if (colPendiente === -1) return { error: "Falta la columna CANTIDAD_PENDIENTE" };
+    if (colBodega    === -1) return { error: "Falta la columna BODEGA_NOMBRE_OP" };
+    if (colCodigo    === -1) return { error: "Falta la columna CODIGO_PRODUCTO" };
 
     const hoy        = new Date();
     const mesActual  = hoy.getMonth();
@@ -58,19 +58,19 @@ function getWipData() {
 
       if (pend > 0 || term > 0) {
         const item = {
-          nv:            colNV      > -1 ? data[i][colNV]                          : "-",
-          op:            colOP      > -1 ? data[i][colOP]                          : "-",
-          producto:      colProd    > -1 ? data[i][colProd]                        : "-",
-          cliente:       colCliente > -1 ? data[i][colCliente]                     : "-",
-          revestimiento: colRevest  > -1 ? data[i][colRevest]                      : "-",
-          espesor:       colEspesor > -1 ? data[i][colEspesor]                     : "-",
-          largo:         colLargo   > -1 ? data[i][colLargo]                       : "-",
-          pedida:        colPedida  > -1 ? parseFloat(data[i][colPedida])  || 0    : 0,
+          nv:            colNV      > -1 ? data[i][colNV]                       : "-",
+          op:            colOP      > -1 ? data[i][colOP]                       : "-",
+          producto:      colProd    > -1 ? data[i][colProd]                     : "-",
+          cliente:       colCliente > -1 ? data[i][colCliente]                  : "-",
+          revestimiento: colRevest  > -1 ? data[i][colRevest]                   : "-",
+          espesor:       colEspesor > -1 ? data[i][colEspesor]                  : "-",
+          largo:         colLargo   > -1 ? data[i][colLargo]                    : "-",
+          pedida:        colPedida  > -1 ? parseFloat(data[i][colPedida])  || 0 : 0,
           producida:     term,
           producidaMes:  producidaMes,
           pendiente:     pend,
           bodega:        bodega,
-          unidad:        colUnidad  > -1 ? data[i][colUnidad]                      : "UN",
+          unidad:        colUnidad  > -1 ? data[i][colUnidad]                   : "UN",
           estado:        (term > 0 && pend > 0) ? "EN PROCESO" : (pend <= 0 ? "TERMINADO" : "PENDIENTE")
         };
 
@@ -86,27 +86,20 @@ function getWipData() {
       }
     }
 
-    // ── producidoPAMes: lee M2 Producidos excluyendo PC4 y Bandejera ──
     let producidoPAMes = 0;
     try {
       const hojaM2 = ss.getSheetByName("M2 Producidos");
       if (hojaM2) {
         const dataM2 = hojaM2.getDataRange().getValues();
-        // Col A=Marca temporal, Col B=Prensa, Col C=M2
         for (let i = 1; i < dataM2.length; i++) {
           const marca  = dataM2[i][0];
           const prensa = (dataM2[i][1] || '').toString().trim().toUpperCase();
           const m2     = parseFloat(dataM2[i][2]) || 0;
           if (!marca || m2 <= 0) continue;
-          // Excluir PSA (PC4 y Bandejera) — solo contar PA
-          const esPSA = prensa.includes('PC4') ||
-                        prensa.includes('BANDEJERA') ||
-                        prensa.includes('BAND');
+          const esPSA = prensa.includes('PC4') || prensa.includes('BANDEJERA') || prensa.includes('BAND');
           if (esPSA) continue;
           const f = parseDateCustom(marca);
-          if (f && f.getMonth() === mesActual && f.getFullYear() === anioActual) {
-            producidoPAMes += m2;
-          }
+          if (f && f.getMonth() === mesActual && f.getFullYear() === anioActual) producidoPAMes += m2;
         }
       }
     } catch (err) { Logger.log("Error producidoPAMes: " + err.toString()); }
@@ -120,12 +113,16 @@ function getWipAcero() {
     const ss = SpreadsheetApp.openById(ID_WIP);
 
     const hojaC = ss.getSheetByName("Consumos Acero");
-    if (!hojaC) return { error: "No se encontró 'Consumos Acero'" };
+    if (!hojaC) return { error: "No se encontro Consumos Acero" };
     const dataC = hojaC.getDataRange().getValues();
-    const hC    = dataC[0].map(h => h.toString().trim().toLowerCase());
-    const iCod  = hC.findIndex(h => h.includes("codigo"));
-    const iDesc = hC.findIndex(h => h.includes("desc"));
-    const iStk  = hC.findIndex(h => h.includes("stk") || h.includes("fisico"));
+    const hC    = dataC[0].map(h => h.toString().trim().toLowerCase()
+                    .normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g,"_"));
+
+    const iCod    = hC.findIndex(h => h.includes("codigo"));
+    const iDesc   = hC.findIndex(h => h.includes("desc"));
+    const iStk    = hC.findIndex(h => h.includes("stk") || h.includes("fisico"));
+    const iPorEnt = hC.findIndex(h => h.includes("por_ent") || h.includes("entregar"));
+    const iPorLl  = hC.findIndex(h => h.includes("llegar"));
 
     const stockMap = {};
     for (let i = 1; i < dataC.length; i++) {
@@ -134,11 +131,17 @@ function getWipAcero() {
       const cod  = (dataC[i][iCod]  || '').toString().trim().toUpperCase();
       const desc = (dataC[i][iDesc] || '').toString().trim();
       if (!cod) continue;
-      stockMap[cod] = { codigo: cod, descripcion: desc, stk_fisico: stk };
+      const por_entregar = iPorEnt > -1 ? (parseFloat(dataC[i][iPorEnt]) || 0) : 0;
+      const por_llegar   = iPorLl  > -1 ? (parseFloat(dataC[i][iPorLl])  || 0) : 0;
+      stockMap[cod] = {
+        codigo: cod, descripcion: desc,
+        stk_fisico: stk, por_entregar: por_entregar,
+        saldo: stk - por_entregar, por_llegar: por_llegar,
+      };
     }
 
     const hojaA = ss.getSheetByName("Aceros");
-    if (!hojaA) return { error: "No se encontró hoja 'Aceros'" };
+    if (!hojaA) return { error: "No se encontro hoja Aceros" };
     const dataA   = hojaA.getDataRange().getValues();
     const hA_full = dataA[0].map(h => h.toString().trim().toLowerCase()
                       .normalize("NFD").replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,'_'));
@@ -167,14 +170,18 @@ function getWipAcero() {
     const resultado = [];
 
     for (const cod in stockMap) {
-      const s           = stockMap[cod];
-      const a           = consumoMap[cod] || null;
-      const consumo_mes = a ? (a.consumo_mes_kg || 0) : 0;
-      const stk         = s.stk_fisico;
+      const s            = stockMap[cod];
+      const a            = consumoMap[cod] || null;
+      const consumo_mes  = a ? (a.consumo_mes_kg || 0) : 0;
+      const stk          = s.stk_fisico;
+      const por_entregar = s.por_entregar;
+      const saldo        = s.saldo;
+      const por_llegar   = s.por_llegar;
+
       let meses_restantes = null, fecha_agotamiento = null;
 
       if (consumo_mes > 0) {
-        meses_restantes = stk / consumo_mes;
+        meses_restantes = saldo / consumo_mes;
         const fechaAg = new Date(hoy);
         fechaAg.setDate(fechaAg.getDate() + Math.round(meses_restantes * 30.44));
         fecha_agotamiento = String(fechaAg.getDate()).padStart(2,'0') + '/' +
@@ -184,17 +191,22 @@ function getWipAcero() {
       }
 
       const urgencia = meses_restantes === null ? 'sin_consumo'
-        : meses_restantes <= 1 ? 'critico'
-        : meses_restantes <= 2 ? 'alerta'
+        : meses_restantes <= 1  ? 'critico'
+        : meses_restantes <= 2  ? 'alerta'
         : 'ok';
 
-      resultado.push({ codigo: cod, descripcion: a ? a.nombre : s.descripcion,
-        stk_fisico: stk, consumo_mes_kg: consumo_mes,
-        meses_restantes, fecha_agotamiento, urgencia });
+      resultado.push({
+        codigo: cod, descripcion: a ? a.nombre : s.descripcion,
+        consumo_mes_kg: consumo_mes,
+        stk_fisico: stk, por_entregar: por_entregar,
+        saldo: saldo, por_llegar: por_llegar,
+        meses_restantes: meses_restantes,
+        fecha_agotamiento: fecha_agotamiento,
+        urgencia: urgencia,
+      });
     }
 
     resultado.sort((a, b) => b.consumo_mes_kg - a.consumo_mes_kg);
-
     return { items: resultado };
   } catch(e) {
     return { error: "Error getWipAcero: " + e.toString() };
