@@ -724,16 +724,18 @@ function App() {
                   const conConsumo = r.consumo_mes_kg > 0;
                   const LEAD       = 90;
 
-                  // ── Quiebre Stock Actual (solo saldo, sin importación) ──
-                  const diasSaldo      = conConsumo ? Math.round(((r.saldo||0)/r.consumo_mes_kg)*30.44) : null;
-                  const fechaSaldo     = diasSaldo !== null ? new Date() : null;
-                  if (fechaSaldo) fechaSaldo.setDate(fechaSaldo.getDate() + diasSaldo);
+                  // ── Quiebre Stock Actual ──
+                  // Usa stk_fisico (stock real en bodega) — sin restar por_entregar
+                  const diasStk        = conConsumo ? ((r.stk_fisico||0) / r.consumo_mes_kg) * 30.44 : null;
+                  const fechaSaldo     = diasStk !== null ? new Date() : null;
+                  if (fechaSaldo) fechaSaldo.setDate(fechaSaldo.getDate() + Math.floor(diasStk));
                   const fSaldoStr      = fechaSaldo ? fechaSaldo.toLocaleDateString('es-CL',{day:'2-digit',month:'2-digit',year:'numeric'}) : '—';
+                  const diasSaldo      = diasStk !== null ? Math.floor(diasStk) : null;
                   const saldoAgotado   = diasSaldo !== null && diasSaldo <= 0;
                   const saldoCritico   = diasSaldo !== null && diasSaldo > 0 && diasSaldo <= 30;
                   const bgSaldo        = !conConsumo ? '#F3F4F6' : saldoAgotado ? '#FEE2E2' : saldoCritico ? '#FEF3C7' : '#F3F4F6';
                   const txSaldo        = !conConsumo ? '#9CA3AF' : saldoAgotado ? '#B91C1C' : saldoCritico ? '#92400E' : '#374151';
-                  const labelSaldo     = !conConsumo ? '—' : saldoAgotado ? '🚨 Agotado' : fSaldoStr;
+                  const labelSaldo     = !conConsumo ? '—' : saldoAgotado ? ('🚨 Agotado') : fSaldoStr;
 
                   // ── Quiebre c/ Importación considerando diasLlegada ──
                   // 1. Stock consumido hasta que llegue la importación
