@@ -53,12 +53,11 @@
     .status {
       display: flex;
       align-items: center;
-      gap: 15px; /* Ampliado para acomodar el login */
+      gap: 15px;
       font-size: 10px;
       color: var(--accent);
     }
 
-    /* Estilizando un poco el botón de Netlify para que encaje */
     .netlify-identity-menu {
       font-family: 'JetBrains Mono', monospace !important;
       color: var(--text);
@@ -76,9 +75,8 @@
       50% { opacity: 0.3; }
     }
 
-    /* 2. OCULTAMOS EL GRID INICIALMENTE */
     .grid {
-      display: none; /* Cambiado de flex a none por defecto */
+      display: none;
       flex: 1;
       grid-template-columns: repeat(2, 1fr);
       grid-template-rows: repeat(2, 1fr);
@@ -173,7 +171,6 @@
       letter-spacing: 1px;
     }
     
-    /* Mensaje para usuarios no logueados */
     #mensaje-login {
       flex: 1;
       display: flex;
@@ -248,11 +245,13 @@
     CALENDARIO: 'https://script.google.com/a/macros/polchile.cl/s/AKfycbzqtyzqc9YdCWMZMJd8FRGonBkyAve3Er4WB9MEJxRncEsYuyVSudu_yLzdUWfz2HiR_A/exec',
   };
 
-  // 4. LÓGICA DE NAVEGACIÓN Y NETLIFY
+  // 4. LÓGICA DE NAVEGACIÓN ACTUALIZADA
   function ir(modulo) {
-    // Al redirigir, pasamos una clave en la URL para que Apps Script sepa que venimos del login
     const secretKey = "M1_CL4V3_S3GUR4"; 
-    window.location.href = URLS[modulo] + "?key=" + secretKey;
+    const urlCompleta = URLS[modulo] + "?key=" + secretKey;
+    
+    // Abre el módulo en una pestaña nueva
+    window.open(urlCompleta, '_blank');
   }
 
   // Inicializar estado del dashboard
@@ -290,7 +289,7 @@
     });
   }
 
-  // Reloj (Tu código original)
+  // Reloj
   function actualizarReloj() {
     var ahora = new Date();
     var h = ahora.getHours().toString().padStart(2,'0');
