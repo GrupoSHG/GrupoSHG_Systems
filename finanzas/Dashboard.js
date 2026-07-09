@@ -1,6 +1,7 @@
 // ============================================================
-// CASH POSITION REPORT — Dashboard Web App v6.1
-// Cambios v6: agrega sección Cumplimiento SSC (Camila/Ana/Karen)
+// CASH POSITION REPORT — Dashboard Web App v6.2
+// Cambios v6.2: agrega sección Cuentas por Cobrar (hoja "Cuentas por Cobrar")
+// Cambios v6.1: agrega sección Cumplimiento SSC (Camila/Ana/Karen)
 // % cumplimiento ayer / semana / mes / acumulado
 // Criterio: tarea cumplida = todas las respuestas ✅ Completo
 // ============================================================
@@ -8,19 +9,152 @@
 var SHEET_ID = '17u9LzXhRkLMVQ-EK1M1KP-uQH6clVTVON_VqK1nmT58';
 var CHECKLIST_ID = '1xc3m0L24Bbp0-7Fk-yCToWH1DjsDf0h3RkW5gQ059Io';
 
+// ============================================================
+// doGet — responde AL INSTANTE con un shell liviano (loader).
+// El trabajo pesado (leer Sheets, armar el HTML) se hace después,
+// en el navegador, vía google.script.run → renderDashboardHtml().
+// Así nunca se ve pantalla negra: siempre hay algo pintado de inmediato.
+// ============================================================
 function doGet(e) {
-  var datos = getDatos();
-  var cumplimiento = getCumplimiento();
-  var output = HtmlService.createHtmlOutput(getDashboardHtml(datos, cumplimiento));
+  var shell = '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">' +
+    '<meta name="viewport" content="width=device-width,initial-scale=1">' +
+    '<title>Cash Position Report — SSC</title>' +
+    '<style>' +
+    '*{box-sizing:border-box;margin:0;padding:0}' +
+    'html,body{height:100%}' +
+    'body{background:#f1f5f9;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;' +
+    'display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px}' +
+    '.spin{width:26px;height:26px;border-radius:50%;border:3px solid #e2e8f0;border-top-color:#0284c7;' +
+    'animation:sp .8s linear infinite}' +
+    '@keyframes sp{to{transform:rotate(360deg)}}' +
+    '.lbl{font-size:12px;color:#94a3b8;font-weight:500}' +
+    '.err{font-size:11px;color:#dc2626;text-align:center;max-width:420px;padding:0 20px}' +
+    '</style></head><body>' +
+    '<div class="spin"></div>' +
+    '<div class="lbl" id="lbl">Cargando dashboard…</div>' +
+    '<script>' +
+    'function pintar(html){ document.open(); document.write(html); document.close(); }' +
+    'function fallo(err){' +
+    '  document.getElementById("lbl").innerHTML = "Reintentando…";' +
+    '  var e = document.createElement("div");' +
+    '  e.className = "err";' +
+    '  e.textContent = (err && err.message) ? err.message : "Error desconocido";' +
+    '  document.body.appendChild(e);' +
+    '  setTimeout(function(){ location.reload(); }, 6000);' +
+    '}' +
+    'google.script.run.withSuccessHandler(pintar).withFailureHandler(fallo).renderDashboardHtml();' +
+    '</' + 'script>' +
+    '</body></html>';
+
+  var output = HtmlService.createHtmlOutput(shell);
   output.setTitle('Cash Position Report — SSC');
   output.setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   return output;
+}
+
+// ============================================================
+// renderDashboardHtml — hace el trabajo pesado (leer Sheets,
+// armar el HTML final) y devuelve el string. Llamada desde el
+// navegador vía google.script.run, nunca bloquea la respuesta inicial.
+// ============================================================
+function renderDashboardHtml() {
+  try {
+    var datos = getDatos();
+    var cumplimiento = getCumplimiento();
+    var cxc = getCuentasPorCobrar();
+    return getDashboardHtml(datos, cumplimiento, cxc);
+  } catch (err) {
+    return '<!DOCTYPE html><html><head><meta charset="UTF-8">' +
+      '<meta http-equiv="refresh" content="6">' +
+      '</head><body style="background:#f1f5f9;color:#64748b;font-family:sans-serif;' +
+      'padding:60px;text-align:center">' +
+      '<h3>Recargando datos…</h3>' +
+      '<p style="font-size:11px;color:#94a3b8">Reintentando automáticamente en 6 segundos.</p>' +
+      '<p style="font-size:9px;color:#cbd5e1">Detalle técnico: ' + err.message + '</p>' +
+      '</body></html>';
+  }
 }
 
 function parseNum(val) {
   if (val === null || val === undefined || val === '') return 0;
   var n = parseFloat(String(val).replace(/[^0-9.-]/g, ''));
   return isNaN(n) ? 0 : n;
+}
+
+// ============================================================
+// getCuentasPorCobrar — lee pestaña "Cuentas por Cobrar"
+// Columnas esperadas: A Documento | B doc_cod | C Rut | D RazonSocial
+//                     E Fecha | F Vmto | G Debe | H Haber | I Saldo
+// ============================================================
+function getCuentasPorCobrar() {
+  try {
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var hoja = ss.getSheetByName('Cuentas por Cobrar');
+    if (!hoja) return { error: 'No se encontró la hoja "Cuentas por Cobrar"' };
+
+    var data = hoja.getDataRange().getValues();
+    if (data.length < 2) {
+      return { total: 0, cantidad: 0, vencidoMonto: 0, vencidoCant: 0, vigenteMonto: 0, vigenteCant: 0, top: [] };
+    }
+
+    var ahoraChile = new Date(new Date().toLocaleString('en-US', {timeZone: 'America/Santiago'}));
+    var hoy = new Date(ahoraChile.getFullYear(), ahoraChile.getMonth(), ahoraChile.getDate());
+
+    var total = 0, cantidad = 0;
+    var vencidoMonto = 0, vencidoCant = 0;
+    var vigenteMonto = 0, vigenteCant = 0;
+    var porCliente = {};
+
+    for (var i = 1; i < data.length; i++) {
+      var fila = data[i];
+      var rut    = fila[2];
+      var razon  = fila[3];
+      var vmto   = fila[5];
+      var saldo  = parseNum(fila[8]);
+
+      if (!razon || saldo === 0) continue;
+
+      cantidad++;
+      total += saldo;
+
+      var vmtoDate = null;
+      if (vmto instanceof Date) {
+        vmtoDate = new Date(vmto.getFullYear(), vmto.getMonth(), vmto.getDate());
+      }
+
+      if (vmtoDate && vmtoDate < hoy) {
+        vencidoMonto += saldo;
+        vencidoCant++;
+      } else {
+        vigenteMonto += saldo;
+        vigenteCant++;
+      }
+
+      var key = razon + '|' + rut;
+      if (!porCliente[key]) {
+        porCliente[key] = { razon: razon, rut: rut, saldo: 0, docs: 0 };
+      }
+      porCliente[key].saldo += saldo;
+      porCliente[key].docs++;
+    }
+
+    var top = Object.keys(porCliente)
+      .map(function(k) { return porCliente[k]; })
+      .sort(function(a, b) { return b.saldo - a.saldo; })
+      .slice(0, 8);
+
+    return {
+      total: total,
+      cantidad: cantidad,
+      vencidoMonto: vencidoMonto,
+      vencidoCant: vencidoCant,
+      vigenteMonto: vigenteMonto,
+      vigenteCant: vigenteCant,
+      top: top
+    };
+  } catch (e) {
+    return { error: 'Error CxC: ' + e.message };
+  }
 }
 
 // ============================================================
@@ -264,7 +398,7 @@ function pctStr(p) {
   return p + '%';
 }
 
-function getDashboardHtml(d, c) {
+function getDashboardHtml(d, c, cxc) {
   if (d.error) {
     return '<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="background:#f8fafc;color:#dc2626;font-family:sans-serif;padding:40px;text-align:center"><h2>' + d.error + '</h2></body></html>';
   }
@@ -378,12 +512,30 @@ body{background:#f1f5f9;color:#1e293b;font-family:Inter,-apple-system,BlinkMacSy
 .cum-bar-wrap{margin-top:10px;height:4px;background:#f1f5f9;border-radius:2px;overflow:hidden}
 .cum-bar{height:4px;border-radius:2px;transition:width .3s}
 .cum-nodata{font-size:10px;color:#94a3b8;text-align:center;padding:16px 0}
+
+/* ── CUENTAS POR COBRAR ── */
+.cxc-table{width:100%;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden;border:1px solid #e2e8f0;box-shadow:0 1px 2px rgba(0,0,0,.04);margin-bottom:16px}
+.cxc-table th{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:#94a3b8;padding:9px 14px;text-align:left;border-bottom:1px solid #f1f5f9;background:#f8fafc}
+.cxc-table td{padding:9px 14px;border-bottom:1px solid #f8fafc;font-size:11px;color:#475569}
+.cxc-table tr:last-child td{border-bottom:none}
+.cxc-table td.num{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
 `;
 
   var html = '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cash Position Report — SSC</title>';
   html += '<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">';
-  html += '<style>' + css + '</style></head><body><div class="wrap">';
+  html += '<style>' + css + '</style><body>';
 
+// ── AGREGAR ESTO ──
+  html += '<style>#polchile-nav{display:flex;align-items:center;background:#000;padding:0 20px;height:40px;border-bottom:1px solid #232932;font-family:monospace;gap:4px;position:sticky;top:0;z-index:9999;}#polchile-nav .nav-logo{font-size:10px;font-weight:700;letter-spacing:2px;color:#d4ff5a;margin-right:12px;cursor:pointer;}#polchile-nav button{padding:4px 12px;font-size:10px;font-weight:700;border-radius:4px;border:1px solid transparent;color:#8a94a3;background:transparent;cursor:pointer;font-family:monospace;}#polchile-nav button:hover{color:#d4ff5a;border-color:#d4ff5a;}#polchile-nav button.active{color:#d4ff5a;border-color:#d4ff5a;background:rgba(212,255,90,0.08);}#polchile-nav .nav-time{margin-left:auto;font-size:10px;color:#8a94a3;}</style>';
+  html += '<div id="polchile-nav">';
+  html += '<span class="nav-logo" onclick="window.top.location.href=\'https://melodic-dasik-d903ff.netlify.app/command-center/\'">&#x2B21; POLCHILE</span>';
+  html += '<button onclick="window.top.location.href=\'https://script.google.com/a/macros/polchile.cl/s/AKfycbzdTfqrkCRPTMa0HBcDrDHjxuYBZTSe7G3nGB5EfK_FvElA6jmgsF7-ShQFc-4ntclb/exec\'">COMERCIAL</button>';
+  html += '<button onclick="window.top.location.href=\'https://script.google.com/a/macros/polchile.cl/s/AKfycbxA_Iy0Zr4YOl6LFsN1oEq74Cb-0MVM0pS4Gs-3-X5GLtikCY1fKK4Y77ecjeU6pwd6/exec\'">PRODUCCION</button>';
+  html += '<button class="active">FINANZAS</button>';
+  html += '<button onclick="window.top.location.href=\'https://script.google.com/a/macros/polchile.cl/s/AKfycbzqtyzqc9YdCWMZMJd8FRGonBkyAve3Er4WB9MEJxRncEsYuyVSudu_yLzdUWfz2HiR_A/exec\'">CALENDARIO</button>';
+  html += '<span class="nav-time" id="nav-clock"></span>';
+  html += '</div>';
+  html += '<script>(function(){var clk=document.getElementById("nav-clock");function tick(){var d=new Date(),h=d.getHours().toString().padStart(2,"0"),m=d.getMinutes().toString().padStart(2,"0"),s=d.getSeconds().toString().padStart(2,"0");if(clk)clk.textContent=h+":"+m+":"+s;}tick();setInterval(tick,1000);})();<\/script>';
   // HEADER
   html += '<div class="hdr"><div class="logo"><div class="logo-box">P</div><div class="logo-text"><div class="t1">Polchile · M5 · CyS</div><div class="t2">SSC — Cash Position Report · Módulo 1</div></div></div>';
   html += '<div class="hdr-right"><span class="chip chip-live"><span class="dot"></span>En vivo</span><span class="chip chip-date">' + fechaChip + '</span><a class="btn-ref" href="https://script.google.com/a/macros/polchile.cl/s/AKfycby0pnIUuRy8bjn108mc9ly4eET4Aa8_B0qD4qZrkqJZAGOtKmvYIOmq-M_mv3Fjuc0Y/exec?t=' + new Date().getTime() + '">↻ Actualizar</a></div></div>';
@@ -480,19 +632,19 @@ body{background:#f1f5f9;color:#1e293b;font-family:Inter,-apple-system,BlinkMacSy
   ];
 
   personas.forEach(function(p) {
-    var datos = c && c[p.nombre];
+    var datosP = c && c[p.nombre];
     html += '<div class="cum-card">';
     html += '<div class="cum-head"><div><div class="cum-name">' + p.nombre + '</div><div class="cum-role">' + p.rol + '</div></div></div>';
     html += '<div class="cum-body">';
 
-    if (!datos) {
+    if (!datosP) {
       html += '<div class="cum-nodata">Sin datos aún — esperando primer checklist</div>';
     } else {
       var periodos = [
-        { lbl: 'Ayer',      val: datos.ayer },
-        { lbl: 'Esta semana', val: datos.semana },
-        { lbl: 'Este mes',  val: datos.mes },
-        { lbl: 'Acumulado', val: datos.acumulado }
+        { lbl: 'Ayer',      val: datosP.ayer },
+        { lbl: 'Esta semana', val: datosP.semana },
+        { lbl: 'Este mes',  val: datosP.mes },
+        { lbl: 'Acumulado', val: datosP.acumulado }
       ];
       periodos.forEach(function(per) {
         var p2 = per.val;
@@ -502,8 +654,8 @@ body{background:#f1f5f9;color:#1e293b;font-family:Inter,-apple-system,BlinkMacSy
         html += '</div>';
       });
       // Barra visual del acumulado
-      var barPct = datos.acumulado !== null ? datos.acumulado : 0;
-      html += '<div class="cum-bar-wrap"><div class="cum-bar" style="width:' + barPct + '%;background:' + pctColor(datos.acumulado) + '"></div></div>';
+      var barPct = datosP.acumulado !== null ? datosP.acumulado : 0;
+      html += '<div class="cum-bar-wrap"><div class="cum-bar" style="width:' + barPct + '%;background:' + pctColor(datosP.acumulado) + '"></div></div>';
     }
 
     html += '</div></div>';
@@ -511,8 +663,29 @@ body{background:#f1f5f9;color:#1e293b;font-family:Inter,-apple-system,BlinkMacSy
 
   html += '</div>';
 
+  // ══ SECCIÓN CUENTAS POR COBRAR ══
+  html += '<div class="slbl">Cuentas por cobrar — FAV pendientes 2026</div>';
+  if (cxc && cxc.error) {
+    html += '<div class="obs"><div class="obstext" style="color:#dc2626">' + cxc.error + '</div></div>';
+  } else if (cxc) {
+    html += '<div class="kpi-row" style="grid-template-columns:repeat(3,1fr)">';
+    html += '<div class="kcard"><div class="kcard-lbl">Total por cobrar</div><div class="kcard-val" style="color:#0284c7">' + fmtM(cxc.total) + '</div><div class="kcard-sub">' + cxc.cantidad + ' documentos · ' + fmt(cxc.total) + '</div></div>';
+    html += '<div class="kcard"><div class="kcard-lbl">Vencido</div><div class="kcard-val" style="color:#dc2626">' + fmtM(cxc.vencidoMonto) + '</div><div class="kcard-sub">' + cxc.vencidoCant + ' documentos</div></div>';
+    html += '<div class="kcard"><div class="kcard-lbl">Vigente</div><div class="kcard-val" style="color:#059669">' + fmtM(cxc.vigenteMonto) + '</div><div class="kcard-sub">' + cxc.vigenteCant + ' documentos</div></div>';
+    html += '</div>';
+
+    html += '<table class="cxc-table"><thead><tr><th>Cliente</th><th>RUT</th><th># Docs</th><th>Saldo</th></tr></thead><tbody>';
+    cxc.top.forEach(function(cl) {
+      html += '<tr><td>' + cl.razon + '</td><td>' + cl.rut + '</td><td>' + cl.docs + '</td><td class="num">' + fmt(cl.saldo) + '</td></tr>';
+    });
+    if (cxc.top.length === 0) {
+      html += '<tr><td colspan="4" style="text-align:center;color:#94a3b8">Sin documentos pendientes</td></tr>';
+    }
+    html += '</tbody></table>';
+  }
+
   // FOOTER
-  html += '<div class="footer"><span>SSC Cash Position Report · Polchile | M5 | CyS · v6.1</span><span>Módulo 1 · Semana 1 de 8 · Actualizado: ' + hora + '</span></div>';
+  html += '<div class="footer"><span>SSC Cash Position Report · Polchile | M5 | CyS · v6.2</span><span>Módulo 1 · Semana 1 de 8 · Actualizado: ' + hora + '</span></div>';
   var refreshUrl = 'https://script.google.com/a/macros/polchile.cl/s/AKfycby0pnIUuRy8bjn108mc9ly4eET4Aa8_B0qD4qZrkqJZAGOtKmvYIOmq-M_mv3Fjuc0Y/exec';
   html += '<script>setTimeout(function(){window.location.href="' + refreshUrl + '?t="+new Date().getTime();},300000);<\/script>';
   html += '</div></body></html>';
@@ -560,4 +733,12 @@ function debugCumplimiento() {
       Logger.log('  → Respuestas: ' + completas + '/' + total);
     }
   }
+}
+
+// ============================================================
+// DEBUG — diagnosticar lectura de Cuentas por Cobrar
+// ============================================================
+function debugCuentasPorCobrar() {
+  var resultado = getCuentasPorCobrar();
+  Logger.log(JSON.stringify(resultado, null, 2));
 }
