@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0b0d10;
+      --panel: #12151a;
+      --border: #232932;
+      --accent: #d4ff5a;
+      --text: #e8ecf1;
+      --muted: #8a94a3;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body, html {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* ── Pantalla de menú principal ── */
+    #menu-screen {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    .header {
+      background: #000;
+      padding: 20px 40px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .header-title {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 3px;
+      color: var(--accent);
+      text-transform: uppercase;
+    }
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 10px;
+      color: var(--accent);
+    }
+
+    .dot {
+      width: 6px; height: 6px;
+      background: var(--accent);
+      border-radius: 50%;
+      animation: blink 1.5s infinite;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    /* ── Grid de dashboards ── */
+    .grid {
+      flex: 1;
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      grid-template-rows: repeat(2, 1fr);
+      gap: 2px;
+      background: var(--border);
+      padding: 2px;
+    }
+
+    .dashboard-card {
+      background: var(--panel);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+      overflow: hidden;
+      gap: 16px;
+      padding: 40px;
+    }
+
+    .dashboard-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      background: var(--accent);
+      transform: scaleX(0);
+      transition: transform 0.3s;
+    }
+
+    .dashboard-card:hover {
+      background: #1a1f28;
+    }
+
+    .dashboard-card:hover::before {
+      transform: scaleX(1);
+    }
+
+    .card-icon {
+      font-size: 48px;
+      line-height: 1;
+    }
+
+    .card-title {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--text);
+    }
+
+    .card-desc {
+      font-size: 10px;
+      color: var(--muted);
+      letter-spacing: 1px;
+      text-align: center;
+    }
+
+    .card-arrow {
+      position: absolute;
+      bottom: 20px;
+      right: 24px;
+      font-size: 18px;
+      color: var(--accent);
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    .dashboard-card:hover .card-arrow {
+      opacity: 1;
+    }
+
+    /* ── Footer ── */
+    .footer {
+      background: #000;
+      padding: 12px 40px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .footer-time {
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .footer-hint {
+      font-size: 10px;
+      color: var(--muted);
+      letter-spacing: 1px;
+    }
+  </style>
+</head>
+<body>
+
+<div id="menu-screen">
+
+  <div class="header">
+    <div class="header-title">⬡ COMMAND CENTER · POLCHILE</div>
+    <div class="status">
+      <div class="dot"></div>
+      <span id="clock">--:--:--</span>
+    </div>
+  </div>
+
+  <div class="grid">
+
+    <div class="dashboard-card" onclick="ir('COMERCIAL')">
+      <div class="card-icon">📊</div>
+      <div class="card-title">Comercial</div>
+      <div class="card-desc">Ventas · Cockpit · Vendedores</div>
+      <div class="card-arrow">→</div>
+    </div>
+
+    <div class="dashboard-card" onclick="ir('PRODUCCION')">
+      <div class="card-icon">🏭</div>
+      <div class="card-title">Producción</div>
+      <div class="card-desc">WIP · Prensas · Acero · PSA</div>
+      <div class="card-arrow">→</div>
+    </div>
+
+    <div class="dashboard-card" onclick="ir('FINANZAS')">
+      <div class="card-icon">💰</div>
+      <div class="card-title">Finanzas</div>
+      <div class="card-desc">Facturación · Cobranza · Flujo</div>
+      <div class="card-arrow">→</div>
+    </div>
+
+    <div class="dashboard-card" onclick="ir('CALENDARIO')">
+      <div class="card-icon">📅</div>
+      <div class="card-title">Calendario</div>
+      <div class="card-desc">Agenda · Entregas · Planificación</div>
+      <div class="card-arrow">→</div>
+    </div>
+
+  </div>
+
+  <div class="footer">
+    <div class="footer-time" id="date-str">—</div>
+    <div class="footer-hint">SELECCIONA UN MÓDULO PARA CONTINUAR</div>
+  </div>
+
+</div>
+
+<script>
+  // URLs de cada dashboard
+  var URLS = {
+    COMERCIAL:  'https://script.google.com/a/macros/polchile.cl/s/AKfycbzdTfqrkCRPTMa0HBcDrDHjxuYBZTSe7G3nGB5EfK_FvElA6jmgsF7-ShQFc-4ntclb/exec',
+    PRODUCCION: 'https://script.google.com/a/macros/polchile.cl/s/AKfycbxA_Iy0Zr4YOl6LFsN1oEq74Cb-0MVM0pS4Gs-3-X5GLtikCY1fKK4Y77ecjeU6pwd6/exec',
+    FINANZAS:   'https://script.google.com/a/macros/polchile.cl/s/AKfycby0pnIUuRy8bjn108mc9ly4eET4Aa8_B0qD4qZrkqJZAGOtKmvYIOmq-M_mv3Fjuc0Y/exec',
+    CALENDARIO: 'https://script.google.com/a/macros/polchile.cl/s/AKfycbzqtyzqc9YdCWMZMJd8FRGonBkyAve3Er4WB9MEJxRncEsYuyVSudu_yLzdUWfz2HiR_A/exec',
+  };
+
+  // Navegar directamente — sin iframe
+  function ir(modulo) {
+    window.location.href = URLS[modulo];
+  }
+
+  // Reloj
+  function actualizarReloj() {
+    var ahora = new Date();
+    var h = ahora.getHours().toString().padStart(2,'0');
+    var m = ahora.getMinutes().toString().padStart(2,'0');
+    var s = ahora.getSeconds().toString().padStart(2,'0');
+    document.getElementById('clock').textContent = h + ':' + m + ':' + s;
+
+    var dias   = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+    var meses  = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    var str    = dias[ahora.getDay()] + ' ' + ahora.getDate() + ' de ' + meses[ahora.getMonth()] + ' ' + ahora.getFullYear();
+    document.getElementById('date-str').textContent = str;
+  }
+
+  actualizarReloj();
+  setInterval(actualizarReloj, 1000);
+</script>
+
+</body>
+</html>

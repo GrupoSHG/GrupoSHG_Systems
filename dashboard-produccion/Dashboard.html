@@ -105,6 +105,25 @@
 </style>
 </head>
 <body>
+<style>
+#polchile-nav{display:flex;align-items:center;background:#000;padding:0 20px;height:40px;border-bottom:1px solid #232932;font-family:'JetBrains Mono',monospace;gap:4px;position:sticky;top:0;z-index:9999;}
+#polchile-nav .nav-logo{font-size:10px;font-weight:700;letter-spacing:2px;color:#d4ff5a;margin-right:12px;}
+#polchile-nav a{padding:4px 12px;font-size:10px;font-weight:700;letter-spacing:1px;text-decoration:none;border-radius:4px;border:1px solid transparent;color:#8a94a3;transition:all 0.15s;}
+#polchile-nav a:hover{color:#d4ff5a;border-color:#d4ff5a;}
+#polchile-nav a.active{color:#d4ff5a;border-color:#d4ff5a;background:rgba(212,255,90,0.08);}
+#polchile-nav .nav-time{margin-left:auto;font-size:10px;color:#8a94a3;letter-spacing:1px;}
+</style>
+<div id="polchile-nav">
+  <span class="nav-logo">&#x2B21; POLCHILE</span>
+  <a href="https://script.google.com/a/macros/polchile.cl/s/AKfycbzdTfqrkCRPTMa0HBcDrDHjxuYBZTSe7G3nGB5EfK_FvElA6jmgsF7-ShQFc-4ntclb/exec" id="nav-comercial" class="">COMERCIAL</a>
+  <a href="https://script.google.com/a/macros/polchile.cl/s/AKfycbxA_Iy0Zr4YOl6LFsN1oEq74Cb-0MVM0pS4Gs-3-X5GLtikCY1fKK4Y77ecjeU6pwd6/exec" id="nav-produccion" class="active">PRODUCCION</a>
+  <a href="https://script.google.com/a/macros/polchile.cl/s/AKfycby0pnIUuRy8bjn108mc9ly4eET4Aa8_B0qD4qZrkqJZAGOtKmvYIOmq-M_mv3Fjuc0Y/exec" id="nav-finanzas" class="">FINANZAS</a>
+  <a href="https://script.google.com/a/macros/polchile.cl/s/AKfycbzqtyzqc9YdCWMZMJd8FRGonBkyAve3Er4WB9MEJxRncEsYuyVSudu_yLzdUWfz2HiR_A/exec" id="nav-calendario" class="">CALENDARIO</a>
+  <span class="nav-time" id="nav-clock"></span>
+</div>
+<script>
+(function(){var clk=document.getElementById('nav-clock');function tick(){var d=new Date(),h=d.getHours().toString().padStart(2,'0'),m=d.getMinutes().toString().padStart(2,'0'),s=d.getSeconds().toString().padStart(2,'0');if(clk)clk.textContent=h+':'+m+':'+s;}tick();setInterval(tick,1000);})();
+</script>
 <div id="root"></div>
 <script type="text/babel">
 const {useState, useEffect, useRef} = React;
@@ -628,6 +647,7 @@ function App() {
         </div>
 
         {/* Tabla calendario */}
+        {/* ── Tabla principal ── */}
         <div className="card" style={{padding:0, overflow:'hidden', marginBottom:16}}>
           <div style={{padding:'14px 22px', borderBottom:'1px solid var(--border)', background:'var(--surface-2)', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
             <b style={{fontSize:13}}>Proyección de Agotamiento · Aceros con Stock</b>
@@ -652,25 +672,50 @@ function App() {
               </thead>
               <tbody>
                 {items.map((r,i) => {
-                  const pct      = barPct(r.meses_restantes);
-                  const bc       = barColor(r.urgencia);
-                  const saldoNeg = (r.saldo||0) < 0;
+                  const saldoNeg   = (r.saldo||0) < 0;
+                  const conConsumo = r.consumo_mes_kg > 0;
+                  const LEAD       = 90;
 
-                  // --- VARIABLES COMPARTIDAS PARA CÁLCULOS EXACTOS DE FECHA ---
-                  const tieneConsumo = r.consumo_mes_kg > 0;
-                  const hoy = new Date();
-                  const diasEnMes = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate();
-                  const consumoDiario = tieneConsumo ? (r.consumo_mes_kg / diasEnMes) : 0;
+                  // Quiebre stock actual (solo saldo)
+                  const diasSaldo      = conConsumo ? Math.round(((r.saldo||0)/r.consumo_mes_kg)*30.44) : null;
+                  const fechaSaldo     = diasSaldo !== null ? new Date() : null;
+                  if (fechaSaldo) fechaSaldo.setDate(fechaSaldo.getDate() + diasSaldo);
+                  const fSaldoStr      = fechaSaldo ? fechaSaldo.toLocaleDateString('es-CL',{day:'2-digit',month:'2-digit',year:'numeric'}) : '—';
+                  const saldoAgotado   = diasSaldo !== null && diasSaldo <= 0;
+                  const saldoCritico   = diasSaldo !== null && diasSaldo > 0 && diasSaldo <= 30;
+                  const bgSaldo        = !conConsumo ? '#F3F4F6' : saldoAgotado ? '#FEE2E2' : saldoCritico ? '#FEF3C7' : '#F3F4F6';
+                  const txSaldo        = !conConsumo ? '#9CA3AF' : saldoAgotado ? '#B91C1C' : saldoCritico ? '#92400E' : '#374151';
+                  const labelSaldo     = !conConsumo ? '—' : saldoAgotado ? '🚨 Agotado' : fSaldoStr;
 
-                  // CONSTANTE LOGÍSTICA: Días que tarda en llegar la importación
-                  const DIAS_PARA_IMPORTACION = 45;
+                  // Quiebre con importación (saldo + por_llegar)
+                  const stockTotal     = (r.saldo||0) + (r.por_llegar||0);
+                  const diasTotal      = conConsumo ? Math.round((stockTotal/r.consumo_mes_kg)*30.44) : null;
+                  const fechaTotal     = diasTotal !== null ? new Date() : null;
+                  if (fechaTotal) fechaTotal.setDate(fechaTotal.getDate() + diasTotal);
+                  const fTotalStr      = fechaTotal ? fechaTotal.toLocaleDateString('es-CL',{day:'2-digit',month:'2-digit',year:'numeric'}) : '—';
+                  const totalAgotado   = diasTotal !== null && diasTotal <= 0;
+                  const totalCritico   = diasTotal !== null && diasTotal > 0 && diasTotal <= 90;
+                  const bgTotal        = !conConsumo ? '#F3F4F6' : totalAgotado ? '#FEE2E2' : totalCritico ? '#FEF3C7' : '#DCFCE7';
+                  const txTotal        = !conConsumo ? '#9CA3AF' : totalAgotado ? '#B91C1C' : totalCritico ? '#92400E' : '#15803D';
+                  const labelTotal     = !conConsumo ? '—' : totalAgotado ? '🚨 Agotado' : fTotalStr;
+
+                  // Fecha límite de compra
+                  const diasCompra     = diasTotal !== null ? diasTotal - LEAD : null;
+                  const fechaCompra    = diasCompra !== null ? new Date() : null;
+                  if (fechaCompra) fechaCompra.setDate(fechaCompra.getDate() + diasCompra);
+                  const fCompraStr     = fechaCompra ? fechaCompra.toLocaleDateString('es-CL',{day:'2-digit',month:'2-digit',year:'numeric'}) : '—';
+                  const compraUrgente  = diasCompra !== null && diasCompra <= 0;
+                  const compraPronto   = diasCompra !== null && diasCompra > 0 && diasCompra <= 30;
+                  const bgCompra       = !conConsumo ? '#F3F4F6' : compraUrgente ? '#FEE2E2' : compraPronto ? '#FEF3C7' : '#DCFCE7';
+                  const txCompra       = !conConsumo ? '#9CA3AF' : compraUrgente ? '#B91C1C' : compraPronto ? '#92400E' : '#15803D';
+                  const labelCompra    = !conConsumo ? '—' : compraUrgente ? ('🚨 AHORA (hace '+Math.abs(diasCompra)+'d)') : compraPronto ? ('⚡ '+fCompraStr) : fCompraStr;
 
                   return (
                     <tr key={i} style={{background: r.urgencia==='critico'?'#FFF5F5':r.urgencia==='alerta'?'#FFFBEB':r.urgencia==='sin_consumo'?'#F9FAFB':'transparent'}}>
                       <td style={{paddingLeft:22, fontFamily:'monospace', fontSize:10, color:'var(--text-3)'}}>{r.codigo}</td>
                       <td style={{maxWidth:190, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', fontSize:11.5}} title={r.descripcion}>{r.descripcion}</td>
                       <td style={{textAlign:'right', fontFamily:'monospace', fontWeight:700, color:'var(--text-2)'}}>
-                        {tieneConsumo ? r.consumo_mes_kg.toLocaleString('es-CL',{maximumFractionDigits:1}) : '—'}
+                        {conConsumo ? r.consumo_mes_kg.toLocaleString('es-CL',{maximumFractionDigits:1}) : '—'}
                       </td>
                       <td style={{textAlign:'right', fontFamily:'monospace'}}>{(r.stk_fisico||0).toLocaleString('es-CL',{maximumFractionDigits:1})}</td>
                       <td style={{textAlign:'right', fontFamily:'monospace', color:(r.por_entregar||0)>0?'var(--coral)':'var(--text-3)'}}>
@@ -679,122 +724,24 @@ function App() {
                       <td style={{textAlign:'right', fontFamily:'monospace', fontWeight:600, color:saldoNeg?'var(--coral)':'var(--purp)', background:saldoNeg?'#FEE2E2':'transparent'}}>
                         {(r.saldo||0).toLocaleString('es-CL',{maximumFractionDigits:1})}
                       </td>
-                      
-                      {/* 1. QUIEBRE STOCK ACTUAL (BASADO EN STOCK FÍSICO) */}
-                      <td style={{textAlign:'center', fontSize:11, fontWeight:600}}>
-                        {(() => {
-                          if (!tieneConsumo) return <span style={{color:'var(--text-3)'}}>—</span>;
-
-                          // Ahora consumimos el Stock Físico en vez del saldo
-                          const diasFisicoActual = Math.max(0, Math.round((r.stk_fisico || 0) / consumoDiario));
-                          const fechaActual = new Date(hoy);
-                          fechaActual.setDate(hoy.getDate() + diasFisicoActual);
-                          const fStrActual = fechaActual.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' });
-
-                          const esNegActual = diasFisicoActual <= 0;
-                          const esCriticoActual = diasFisicoActual > 0 && diasFisicoActual <= 30;
-
-                          const bg = esNegActual ? '#FEE2E2' : esCriticoActual ? '#FEF3C7' : '#F3F4F6';
-                          const tx = esNegActual ? '#B91C1C' : esCriticoActual ? '#92400E' : '#374151';
-
-                          return (
-                            <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 6, fontSize: 10, fontWeight: 700, background: bg, color: tx, whiteSpace: 'nowrap' }}>
-                              {esNegActual ? `🚨 Agotado el ${fStrActual}` : fStrActual}
-                            </span>
-                          );
-                        })()}
+                      <td style={{textAlign:'center'}}>
+                        <span style={{display:'inline-block', padding:'2px 8px', borderRadius:6, fontSize:10, fontWeight:700, background:bgSaldo, color:txSaldo, whiteSpace:'nowrap'}}>
+                          {labelSaldo}
+                        </span>
                       </td>
-                      
                       <td style={{textAlign:'right', fontFamily:'monospace', color:(r.por_llegar||0)>0?'#2563EB':'var(--text-3)', fontWeight:(r.por_llegar||0)>0?600:400}}>
                         {(r.por_llegar||0)>0 ? r.por_llegar.toLocaleString('es-CL',{maximumFractionDigits:1}) : '—'}
                       </td>
-                      
-                      {/* 2. QUIEBRE C/ IMPORTACIÓN (LÓGICA CRONOLÓGICA CON STOCK FÍSICO) */}
-                      <td style={{textAlign:'center', fontSize:11, fontWeight:600}}>
-                        {(() => {
-                          if (!tieneConsumo) return <span style={{color:'var(--text-3)'}}>—</span>;
-
-                          const fisicoBase = r.stk_fisico || 0;
-                          const consumoEn45Dias = consumoDiario * DIAS_PARA_IMPORTACION;
-                          
-                          // Calculamos el stock físico remanente en el día 45
-                          const remanenteDia45 = fisicoBase - consumoEn45Dias;
-
-                          // Inyección de stock por llegada al día 45
-                          const stockTotalDia45 = remanenteDia45 + (r.por_llegar || 0);
-
-                          let diasTotalesProyectados = 0;
-
-                          if (fisicoBase <= 0) {
-                            // Si el físico hoy es 0, la importación salva la situación a partir del día 45
-                            const diasImportacion = Math.round((r.por_llegar || 0) / consumoDiario);
-                            diasTotalesProyectados = DIAS_PARA_IMPORTACION + diasImportacion;
-                          } else {
-                            // Ver si el stock físico aguanta los 45 días
-                            const diasDuraFisicoActual = Math.round(fisicoBase / consumoDiario);
-
-                            if (diasDuraFisicoActual < DIAS_PARA_IMPORTACION) {
-                              // Quiebra antes del día 45 físicamente.
-                              const diasImportacion = Math.round((r.por_llegar || 0) / consumoDiario);
-                              diasTotalesProyectados = DIAS_PARA_IMPORTACION + diasImportacion;
-                            } else {
-                              // El stock físico dura más de 45 días, sumamos remanente + llegada.
-                              const diasExtraImportacion = Math.round(stockTotalDia45 / consumoDiario);
-                              diasTotalesProyectados = diasExtraImportacion;
-                            }
-                          }
-
-                          const diasFinales = Math.max(0, diasTotalesProyectados);
-
-                          const fechaImportacion = new Date(hoy);
-                          fechaImportacion.setDate(hoy.getDate() + diasFinales);
-                          const fStrImportacion = fechaImportacion.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' });
-
-                          const esNegImportacion = diasFinales <= 0;
-                          const esCriticoImportacion = diasFinales > 0 && diasFinales <= 30;
-
-                          const bg = esNegImportacion ? '#FEE2E2' : esCriticoImportacion ? '#FEF3C7' : '#F3F4F6';
-                          const tx = esNegImportacion ? '#B91C1C' : esCriticoImportacion ? '#92400E' : '#374151';
-
-                          return (
-                            <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 6, fontSize: 10, fontWeight: 700, background: bg, color: tx, whiteSpace: 'nowrap' }}>
-                              {esNegImportacion ? `🚨 Agotado el ${fStrImportacion}` : fStrImportacion}
-                            </span>
-                          );
-                        })()}
+                      <td style={{textAlign:'center'}}>
+                        <span style={{display:'inline-block', padding:'2px 8px', borderRadius:6, fontSize:10, fontWeight:700, background:bgTotal, color:txTotal, whiteSpace:'nowrap'}}>
+                          {labelTotal}
+                        </span>
                       </td>
-                      
-                      {/* 3. FECHA LÍMITE DE COMPRA (BASADA EN STOCK FÍSICO + POR LLEGAR) */}
-                      {(() => {
-                        const LEAD_DAYS = 90;
-                        if (!tieneConsumo) {
-                          return <td style={{textAlign:'center', color:'var(--text-3)'}}>—</td>;
-                        }
-                        
-                        const stockTotalFisico = (r.stk_fisico || 0) + (r.por_llegar || 0);
-                        const diasStock    = Math.round(stockTotalFisico / consumoDiario);
-                        const diasCompra   = diasStock - LEAD_DAYS;
-                        
-                        const fechaCompra  = new Date(hoy);
-                        fechaCompra.setDate(hoy.getDate() + diasCompra);
-                        const fcStr = fechaCompra.toLocaleDateString('es-CL',{day:'2-digit',month:'2-digit',year:'numeric'});
-                        
-                        const esUrgente  = diasCompra <= 0;
-                        const esPronto   = diasCompra > 0 && diasCompra <= 30;
-                        
-                        const bgColor    = esUrgente ? '#FEE2E2' : esPronto ? '#FEF3C7' : '#DCFCE7';
-                        const txColor    = esUrgente ? '#B91C1C' : esPronto ? '#92400E' : '#15803D';
-                        const label      = esUrgente ? '🚨 AHORA' : esPronto ? '⚡ ' + fcStr : fcStr;
-                        
-                        return (
-                          <td style={{textAlign:'center'}}>
-                            <span style={{display:'inline-block', padding:'3px 10px', borderRadius:8, fontSize:10, fontWeight:700, background:bgColor, color:txColor, whiteSpace:'nowrap'}}>
-                              {label}
-                            </span>
-                            {esUrgente && <div style={{fontSize:9, color:'#B91C1C', marginTop:2}}>hace {Math.abs(diasCompra)}d</div>}
-                          </td>
-                        );
-                      })()}
+                      <td style={{textAlign:'center'}}>
+                        <span style={{display:'inline-block', padding:'3px 10px', borderRadius:8, fontSize:10, fontWeight:700, background:bgCompra, color:txCompra, whiteSpace:'nowrap'}}>
+                          {labelCompra}
+                        </span>
+                      </td>
                       <td style={{textAlign:'center'}}>
                         <span style={{display:'inline-block', padding:'2px 8px', borderRadius:10, fontSize:9, fontWeight:700, background:urgBg(r.urgencia||'ok'), color:urgColor(r.urgencia||'ok')}}>
                           {urgTxt(r.urgencia||'ok')}
@@ -907,7 +854,8 @@ function App() {
         })()}
       </>
     );
-  }
+  };
+
   /* ════════════ RENDER ════════════ */
   const ayerV   = m2Ayer.total||0;
   const ayerCol = ayerV<700?'#EF4444':ayerV<1000?'#F59E0B':'#22C55E';
