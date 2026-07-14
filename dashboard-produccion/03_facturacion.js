@@ -128,7 +128,16 @@ function getFacturacionData() {
       }
     }
 
-    return { facturado: facturadoMesActual, porFacturar: porRecaudarAcumulado, fechaEntrega: fechaEntregaCercana };
+    const presupuestoMes = PRESUPUESTO_MENSUAL[mesActualNum - 1] || 0;
+    const cumplimientoPct = presupuestoMes > 0 ? (facturadoMesActual / presupuestoMes) * 100 : 0;
+
+    return {
+      facturado: facturadoMesActual,
+      porFacturar: porRecaudarAcumulado,
+      fechaEntrega: fechaEntregaCercana,
+      presupuestoMes: presupuestoMes,
+      cumplimientoPct: cumplimientoPct
+    };
   } catch(e) {
     Logger.log("Error general en getFacturacionData: " + e.toString());
     return { error: e.toString() };

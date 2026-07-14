@@ -225,7 +225,7 @@ function Velocimetro({ valor, fecha }) {
 function App() {
   const [metrics,          setMetrics]          = useState([]);
   const [wip,              setWip]              = useState({ conAislacion:[], sinAislacion:[], producidoPAMes:0 });
-  const [facturacion,      setFacturacion]      = useState({ facturado:0, porFacturar:0 });
+  const [facturacion,      setFacturacion]      = useState({ facturado:0, porFacturar:0, presupuestoMes:0, cumplimientoPct:0 });
   const [plan,             setPlan]             = useState({ ops:[], groups:[], presses:[], config:null });
   const [planError,        setPlanError]        = useState(null);
   const [rend,             setRend]             = useState({ rows:[], hoursElapsed:0, shiftStart:'', now:'' });
@@ -1047,7 +1047,7 @@ function App() {
 
       {/* Facturación */}
       <div className="section-title">Estado de Facturación Comercial</div>
-      <div className="kpi-grid grid-2">
+      <div className="kpi-grid grid-3">
         <div className="kpi" style={{borderLeft:'4px solid #10b981'}}>
           <div>
             <div className="kpi-label">Facturado Neto (Mes Actual)</div>
@@ -1064,6 +1064,24 @@ function App() {
               <span style={{fontSize:22,marginRight:6,color:'var(--text-3)'}}>$</span>
               {fmtM(facturacion.porFacturar)}<span className="kpi-unit" style={{color:'var(--coral)'}}>M$</span>
             </div>
+          </div>
+        </div>
+        <div className="kpi" style={{borderLeft:'4px solid #6366F1'}}>
+          <div>
+            <div className="kpi-label">Presupuesto del Mes</div>
+            <div className="kpi-value" style={{color:'#6366F1'}}>
+              <span style={{fontSize:22,marginRight:6,color:'var(--text-3)'}}>$</span>
+              {fmtM(facturacion.presupuestoMes)}<span className="kpi-unit" style={{color:'#6366F1'}}>M$</span>
+            </div>
+          </div>
+          <div className="kpi-sub">
+            <b>Cumplimiento</b>
+            {(() => {
+              const p = facturacion.cumplimientoPct || 0;
+              const bg = p >= 100 ? '#DCFCE7' : p >= 80 ? '#FEF3C7' : '#FEE2E2';
+              const tx = p >= 100 ? '#15803D' : p >= 80 ? '#92400E' : '#B91C1C';
+              return <span className="badge" style={{background:bg, color:tx}}>{p.toFixed(1)}%</span>;
+            })()}
           </div>
         </div>
       </div>

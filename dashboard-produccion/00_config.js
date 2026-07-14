@@ -11,6 +11,10 @@ function doGet(e) {
 const ID_PRENSAS = "1VsrO56oje4_XVEVbUAyuOz7eb0p8ZaQ_gOzOFNW0STc";
 const ID_WIP = "10PvCCTw31gOhvSgcbIy15V3lBNdQZwX7Naa0R-yPO0k";
 
+// Presupuesto de facturación mensual (M$ CLP), Ene→Dic.
+// Debe mantenerse igual al array PRESUPUESTO_MENSUAL del Cockpit Comercial.
+const PRESUPUESTO_MENSUAL = [383.4, 421.2, 437.4, 367.2, 448.2, 502.2, 459.0, 469.8, 459.0, 415.8, 534.6, 502.2];
+
 function parseDateCustom(val) {
   if (!val) return null;
   if (val instanceof Date) {
