@@ -128,7 +128,7 @@ function getFacturacionData() {
       }
     }
 
-    const presupuestoMes = PRESUPUESTO_MENSUAL[mesActualNum - 1] || 0;
+    const presupuestoMes = (PRESUPUESTO_MENSUAL[mesActualNum - 1] || 0) * 1000000;
     const cumplimientoPct = presupuestoMes > 0 ? (facturadoMesActual / presupuestoMes) * 100 : 0;
 
     return {
