@@ -332,17 +332,36 @@ function testChipax() {
 // WEB APP
 // ======================================================================
 function doGet(e) {
-  if (e && e.parameter && e.parameter.action === 'data') {
+  var action = e && e.parameter && e.parameter.action;
+
+  if (action && action !== 'html') {
+    var result;
+    try {
+      switch (action) {
+        case 'data':               result = buildDashboardPayload(); break;
+        case 'getResumenPolchile': result = getResumenPolchile();    break;
+        case 'getResumenM5Chipax': result = getResumenM5Chipax();    break;
+        case 'getChipaxDashboard': result = getChipaxDashboard();    break;
+        default: result = { error: 'Acción desconocida: ' + action };
+      }
+    } catch (err) {
+      result = { error: err.message };
+    }
     return ContentService
-      .createTextOutput(JSON.stringify(buildDashboardPayload()))
+      .createTextOutput(JSON.stringify(result))
       .setMimeType(ContentService.MimeType.JSON);
   }
+
   const t = HtmlService.createTemplateFromFile('Index');
   t.scriptUrl = ScriptApp.getService().getUrl();
   return t.evaluate()
     .setTitle('Polchile · Dashboard Comercial')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+}
+
+function include(filename) {
+  return HtmlService.createHtmlOutputFromFile(filename).getContent();
 }
 
 function include(filename) {

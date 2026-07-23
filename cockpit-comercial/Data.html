@@ -205,15 +205,31 @@ window.__loadLiveData = function() {
         window.PCH.KPI_MES.mesActual  = payload.kpis.mesActual;
         window.PCH.KPI_MES.fechaHoy   = payload.kpis.fechaHoy;
 
-        // ── FORECAST FACTURACIÓN ─────────────────────────────
-        // Facturado MTD + NV abiertas del mes × 70% + Cotizaciones MTD × 24%
-        var forecastFact = facturadoM + (nvM * 0.70) + (cotizadoM * 0.05);
+        // ── FACTOR DE TIEMPO RESTANTE ──────────────────────
+        // 1.0 al inicio del mes → ~0 al final del mes
+        var getFactorTiempoRestante = function(fecha) {
+          fecha = fecha || new Date();
+          var diaActual      = fecha.getDate();
+          var diasEnMes      = new Date(fecha.getFullYear(), fecha.getMonth() + 1, 0).getDate();
+          var diasRestantes  = diasEnMes - diaActual + 1; // +1 para incluir el día actual
+          return diasRestantes / diasEnMes;
+        };
+
+        var factorTiempo = getFactorTiempoRestante();
+
+        // ── FORECAST FACTURACIÓN ───────────────────────────
+        // Facturado MTD + NV pendientes×70% (ajustado por tiempo) + Cotizado×9.1% (ajustado por tiempo)
+        var probNVaFact  = 0.70  * factorTiempo;
+        var probCotFact  = 0.091 * factorTiempo;
+
+        var forecastFact = facturadoM + (nvM * probNVaFact) + (cotizadoM * probCotFact);
         window.PCH.KPI_MES.forecast_fact = forecastFact;
         window.PCH.KPI_MES.forecast_mes  = forecastFact; // legacy
 
-        // ── FORECAST NV ──────────────────────────────────────
-        // NV emitidas MTD + Cotizaciones MTD × 35%
-        var forecastNV = nvM + (cotizadoM * 0.20);
+        // ── FORECAST NV ─────────────────────────────────────
+        // NV emitidas MTD + Cotizaciones MTD × 18.2% (ajustado por tiempo)
+        var probCotNV  = 0.182 * factorTiempo;
+        var forecastNV = nvM + (cotizadoM * probCotNV);
         window.PCH.KPI_MES.forecast_nv = forecastNV;
 
         window.PCH.KPI_MES.cumplimiento = Math.round(
