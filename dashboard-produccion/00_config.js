@@ -1,4 +1,46 @@
 function doGet(e) {
+  var action   = e && e.parameter && e.parameter.action;
+  var callback = e && e.parameter && e.parameter.callback;
+
+  // Modo API JSON (JSONP): usado por el frontend estático (Netlify) vía el
+  // shim de google.script.run. Cada función llamable desde el frontend
+  // necesita su propio 'case' acá.
+  if (action) {
+    var result;
+    try {
+      switch (action) {
+ 
+        case 'getWipData':             result = getWipData();             break;
+        case 'getFacturacionData':     result = getFacturacionData();     break;
+        case 'getPlanPrensas':         result = getPlanPrensas();         break;
+        case 'getRendimientoPrensas':  result = getRendimientoPrensas();  break;
+        case 'getProduccionDiariaMes':result = getProduccionDiariaMes(); break;
+        case 'getInventarioInsumos':  result = getInventarioInsumos();   break;
+        case 'getM2Ayer':              result = getM2Ayer();              break;
+        case 'getWipAcero':            result = getWipAcero();            break;
+        case 'getM2PSA':               result = getM2PSA();               break;
+        case 'getCatalogoStock':       result = getCatalogoStock();       break;
+        default: result = { error: 'Acción desconocida: ' + action };
+      }
+    } catch (err) {
+      result = { error: err.message };
+    }
+
+    if (callback) {
+      // JSONP: la respuesta se envuelve como JS ejecutable, cargado por el
+      // frontend vía <script src="...">. Esto evita el problema de CORS
+      // que Apps Script tiene con fetch() desde otro origen.
+      return ContentService
+        .createTextOutput(callback + '(' + JSON.stringify(result) + ');')
+        .setMimeType(ContentService.MimeType.JAVASCRIPT);
+    }
+
+    return ContentService
+      .createTextOutput(JSON.stringify(result))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // Modo HTML normal (el Apps Script Web App original, sigue funcionando igual)
   const page = e && e.parameter && e.parameter.page;
   const tplName = (page === 'plan' || page === 'itinerario') ? 'Plan' : 'Dashboard';
   return HtmlService.createTemplateFromFile(tplName)
@@ -14,6 +56,16 @@ const ID_WIP = "10PvCCTw31gOhvSgcbIy15V3lBNdQZwX7Naa0R-yPO0k";
 // Presupuesto de facturación mensual (M$ CLP), Ene→Dic.
 // Debe mantenerse igual al array PRESUPUESTO_MENSUAL del Cockpit Comercial.
 const PRESUPUESTO_MENSUAL = [383.4, 421.2, 437.4, 367.2, 448.2, 502.2, 459.0, 469.8, 459.0, 415.8, 534.6, 502.2];
+
+// Constantes que usa getRendimientoPrensas() (en 01_produccion.js).
+// SHIFT_START_HOUR: turno empieza a las 08:00.
+const SHIFT_START_HOUR = 8;
+
+// META_POR_HORA: 170 m²/jornada de 9h (misma jornada que PLAN_CONFIG.jornadaH
+// en 05_plan.js) → 170/9 ≈ 18.89 m²/h, igual para las 7 prensas.
+const META_POR_HORA = {
+  P1: 18.89, P2: 18.89, P3: 18.89, P4: 18.89, P5: 18.89, P6: 18.89, P7: 18.89
+};
 
 function parseDateCustom(val) {
   if (!val) return null;

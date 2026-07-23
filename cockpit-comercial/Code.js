@@ -331,33 +331,55 @@ function testChipax() {
 // ======================================================================
 // WEB APP
 // ======================================================================
+// ======================================================================
+// WEB APP
+// ======================================================================
 function doGet(e) {
-  var action = e && e.parameter && e.parameter.action;
+  var action   = e && e.parameter && e.parameter.action;
+  var callback = e && e.parameter && e.parameter.callback;
 
-  if (action && action !== 'html') {
+  if (action) {
     var result;
     try {
       switch (action) {
-        case 'data':               result = buildDashboardPayload(); break;
-        case 'getResumenPolchile': result = getResumenPolchile();    break;
-        case 'getResumenM5Chipax': result = getResumenM5Chipax();    break;
-        case 'getChipaxDashboard': result = getChipaxDashboard();    break;
+        // 'data' y 'buildDashboardPayload' son alias de la misma función
+        // (el frontend llama .buildDashboardPayload() vía google.script.run)
+        case 'data':
+        case 'buildDashboardPayload': result = buildDashboardPayload(); break;
+        case 'getResumenPolchile':    result = getResumenPolchile();    break;
+        case 'getResumenM5Chipax':    result = getResumenM5Chipax();    break;
+        case 'getChipaxDashboard':    result = getChipaxDashboard();    break;
         default: result = { error: 'Acción desconocida: ' + action };
       }
     } catch (err) {
       result = { error: err.message };
     }
+
+    if (callback) {
+      // JSONP: la respuesta se envuelve como JS ejecutable, cargado por el
+      // frontend vía <script src="...">. Esto evita el problema de CORS
+      // que Apps Script tiene con fetch() desde otro origen.
+      return ContentService
+        .createTextOutput(callback + '(' + JSON.stringify(result) + ');')
+        .setMimeType(ContentService.MimeType.JAVASCRIPT);
+    }
+
     return ContentService
       .createTextOutput(JSON.stringify(result))
       .setMimeType(ContentService.MimeType.JSON);
   }
 
+  // Modo HTML normal (el Apps Script Web App original, sigue funcionando igual)
   const t = HtmlService.createTemplateFromFile('Index');
   t.scriptUrl = ScriptApp.getService().getUrl();
   return t.evaluate()
     .setTitle('Polchile · Dashboard Comercial')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+}
+
+function include(filename) {
+  return HtmlService.createHtmlOutputFromFile(filename).getContent();
 }
 
 function include(filename) {
