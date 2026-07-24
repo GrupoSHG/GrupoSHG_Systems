@@ -238,20 +238,17 @@
 </div>
 
 <script>
+  // URLs actualizadas — apuntan a los 4 dashboards en Netlify (ya no a Apps Script)
   var URLS = {
-    COMERCIAL:  'https://script.google.com/a/macros/polchile.cl/s/AKfycbzdTfqrkCRPTMa0HBcDrDHjxuYBZTSe7G3nGB5EfK_FvElA6jmgsF7-ShQFc-4ntclb/exec',
-    PRODUCCION: 'https://script.google.com/a/macros/polchile.cl/s/AKfycbxA_Iy0Zr4YOl6LFsN1oEq74Cb-0MVM0pS4Gs-3-X5GLtikCY1fKK4Y77ecjeU6pwd6/exec',
-    FINANZAS:   'https://script.google.com/a/macros/polchile.cl/s/AKfycby0pnIUuRy8bjn108mc9ly4eET4Aa8_B0qD4qZrkqJZAGOtKmvYIOmq-M_mv3Fjuc0Y/exec',
-    CALENDARIO: 'https://script.google.com/a/macros/polchile.cl/s/AKfycbzqtyzqc9YdCWMZMJd8FRGonBkyAve3Er4WB9MEJxRncEsYuyVSudu_yLzdUWfz2HiR_A/exec',
+    COMERCIAL:  'https://cockpit-comericial-web.netlify.app/',
+    PRODUCCION: 'https://polchile-produccion.netlify.app/',
+    FINANZAS:   'https://dashboard-finanzasweb.netlify.app/',
+    CALENDARIO: 'https://calendario-despachos.netlify.app/',
   };
 
-  // 4. LÓGICA DE NAVEGACIÓN ACTUALIZADA
   function ir(modulo) {
-    const secretKey = "M1_CL4V3_S3GUR4"; 
-    const urlCompleta = URLS[modulo] + "?key=" + secretKey;
-    
     // Abre el módulo en una pestaña nueva
-    window.open(urlCompleta, '_blank');
+    window.open(URLS[modulo], '_blank');
   }
 
   // Inicializar estado del dashboard
