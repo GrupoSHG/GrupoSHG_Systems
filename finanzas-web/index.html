@@ -17,7 +17,7 @@ animation:sp .8s linear infinite}
 </style>
 <script>
   // AJUSTAR: URL /exec del deployment de Apps Script de finanzas
-  window.__SCRIPT_URL__ = 'https://script.google.com/macros/s/AKfycby0pnIUuRy8bjn108mc9ly4eET4Aa8_B0qD4qZrkqJZAGOtKmvYIOmq-M_mv3Fjuc0Y/exec';
+  window.__SCRIPT_URL__ = 'https://script.google.com/macros/s/TU_ID_DE_DEPLOYMENT/exec';
 </script>
 <script src="google-script-shim.js"></script>
 </head>
@@ -233,10 +233,10 @@ body{background:#f1f5f9;color:#1e293b;font-family:Inter,-apple-system,BlinkMacSy
   html += '<style>#polchile-nav{display:flex;align-items:center;background:#000;padding:0 20px;height:40px;border-bottom:1px solid #232932;font-family:monospace;gap:4px;position:sticky;top:0;z-index:9999;}#polchile-nav .nav-logo{font-size:10px;font-weight:700;letter-spacing:2px;color:#d4ff5a;margin-right:12px;cursor:pointer;}#polchile-nav button{padding:4px 12px;font-size:10px;font-weight:700;border-radius:4px;border:1px solid transparent;color:#8a94a3;background:transparent;cursor:pointer;font-family:monospace;}#polchile-nav button:hover{color:#d4ff5a;border-color:#d4ff5a;}#polchile-nav button.active{color:#d4ff5a;border-color:#d4ff5a;background:rgba(212,255,90,0.08);}#polchile-nav .nav-time{margin-left:auto;font-size:10px;color:#8a94a3;}</style>';
   html += '<div id="polchile-nav">';
   html += '<span class="nav-logo" onclick="window.top.location.href=\'https://melodic-dasik-d903ff.netlify.app/command-center/\'">&#x2B21; POLCHILE</span>';
-  html += '<button onclick="window.top.location.href=\'https://script.google.com/a/macros/polchile.cl/s/AKfycbzdTfqrkCRPTMa0HBcDrDHjxuYBZTSe7G3nGB5EfK_FvElA6jmgsF7-ShQFc-4ntclb/exec\'">COMERCIAL</button>';
-  html += '<button onclick="window.top.location.href=\'https://script.google.com/a/macros/polchile.cl/s/AKfycbxA_Iy0Zr4YOl6LFsN1oEq74Cb-0MVM0pS4Gs-3-X5GLtikCY1fKK4Y77ecjeU6pwd6/exec\'">PRODUCCION</button>';
+  html += '<button onclick="window.top.location.href=\'https://cockpit-comericial-web.netlify.app/\'">COMERCIAL</button>';
+  html += '<button onclick="window.top.location.href=\'https://polchile-produccion.netlify.app/\'">PRODUCCION</button>';
   html += '<button class="active">FINANZAS</button>';
-  html += '<button onclick="window.top.location.href=\'https://script.google.com/a/macros/polchile.cl/s/AKfycbzqtyzqc9YdCWMZMJd8FRGonBkyAve3Er4WB9MEJxRncEsYuyVSudu_yLzdUWfz2HiR_A/exec\'">CALENDARIO</button>';
+  html += '<button onclick="window.top.location.href=\'https://calendario-despachos.netlify.app/\'">CALENDARIO</button>';
   html += '<span class="nav-time" id="nav-clock"></span>';
   html += '</div>';
   html += '<script>(function(){var clk=document.getElementById("nav-clock");function tick(){var d=new Date(),h=d.getHours().toString().padStart(2,"0"),m=d.getMinutes().toString().padStart(2,"0"),s=d.getSeconds().toString().padStart(2,"0");if(clk)clk.textContent=h+":"+m+":"+s;}tick();setInterval(tick,1000);})();<\/script>';

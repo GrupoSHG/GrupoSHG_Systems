@@ -10,6 +10,25 @@
   <link rel="stylesheet" href="/styles.css"/>
 </head>
 <body>
+<style>
+#polchile-nav{display:flex;align-items:center;background:#000;padding:0 20px;height:40px;border-bottom:1px solid #232932;font-family:monospace;gap:4px;position:sticky;top:0;z-index:9999;}
+#polchile-nav .nav-logo{font-size:10px;font-weight:700;letter-spacing:2px;color:#d4ff5a;margin-right:12px;}
+#polchile-nav a{padding:4px 12px;font-size:10px;font-weight:700;letter-spacing:1px;text-decoration:none;border-radius:4px;border:1px solid transparent;color:#8a94a3;transition:all 0.15s;}
+#polchile-nav a:hover{color:#d4ff5a;border-color:#d4ff5a;}
+#polchile-nav a.active{color:#d4ff5a;border-color:#d4ff5a;background:rgba(212,255,90,0.08);}
+#polchile-nav .nav-time{margin-left:auto;font-size:10px;color:#8a94a3;letter-spacing:1px;}
+</style>
+<div id="polchile-nav">
+  <span class="nav-logo">⬡ POLCHILE</span>
+  <a href="https://cockpit-comericial-web.netlify.app/" class="active">COMERCIAL</a>
+  <a href="https://polchile-produccion.netlify.app/">PRODUCCION</a>
+  <a href="https://dashboard-finanzasweb.netlify.app/">FINANZAS</a>
+  <a href="https://calendario-despachos.netlify.app/">CALENDARIO</a>
+  <span class="nav-time" id="nav-clock"></span>
+</div>
+<script>
+(function(){var clk=document.getElementById('nav-clock');function tick(){var d=new Date(),h=d.getHours().toString().padStart(2,'0'),m=d.getMinutes().toString().padStart(2,'0'),s=d.getSeconds().toString().padStart(2,'0');if(clk)clk.textContent=h+':'+m+':'+s;}tick();setInterval(tick,1000);})();
+</script>
   <div id="root"></div>
 
   <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
@@ -18,7 +37,7 @@
 
   <script>
     // ⚠️ AJUSTAR: URL /exec de tu deployment de Apps Script
-    window.__SCRIPT_URL__ = 'https://script.google.com/macros/s/AKfycbzdTfqrkCRPTMa0HBcDrDHjxuYBZTSe7G3nGB5EfK_FvElA6jmgsF7-ShQFc-4ntclb/exec';
+    window.__SCRIPT_URL__ = 'https://script.google.com/macros/s/TU_ID_DE_DEPLOYMENT/exec';
   </script>
 
   <!-- Shim que reemplaza google.script.run por fetch() -->
