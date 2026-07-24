@@ -44,30 +44,15 @@ function generarDemo(periodo){
 }
 
 /* ---------------------------------------------------------
-   Llamada real a SimpleAPI (modo API real)
-   Ver notas de integraci\u00f3n al final del archivo / respuesta.
+   Consulta al backend propio (no a SimpleAPI directo).
+   El backend guarda el certificado .pfx, su password y el ApiKey
+   en variables de entorno — el navegador nunca los ve.
 --------------------------------------------------------- */
-async function consultarSimpleAPI({apikey, rut, clave, periodo}){
-  // 1) Obtener Bearer Token
-  const tokenResp = await fetch('https://api.simpleapi.cl/auth/token', {
-    method:'POST',
-    headers:{ 'Authorization': apikey, 'Content-Type':'application/json' }
-  });
-  if(!tokenResp.ok) throw new Error('No se pudo obtener el Bearer Token ('+tokenResp.status+')');
-  const { token } = await tokenResp.json();
-
-  // 2) Consultar RCV (compras y ventas) - confirmar path exacto en la colecci\u00f3n Postman de SimpleAPI
-  async function pedir(tipo){
-    const resp = await fetch('https://api.simpleapi.cl/rcv/'+tipo, {
-      method:'POST',
-      headers:{ 'Authorization':'Bearer '+token, 'Content-Type':'application/json' },
-      body: JSON.stringify({ rut, clave, periodo })
-    });
-    if(!resp.ok) throw new Error('Error consultando '+tipo+' ('+resp.status+')');
-    return resp.json();
-  }
-  const [compra, venta] = await Promise.all([pedir('compra'), pedir('venta')]);
-  return { compra, venta };
+async function consultarRCV(periodo){
+  const resp = await fetch(`/api/rcv?periodo=${encodeURIComponent(periodo)}`);
+  const data = await resp.json().catch(()=>({}));
+  if(!resp.ok) throw new Error(data.error || `Error del backend (${resp.status})`);
+  return { compra: data.compra || [], venta: data.venta || [] };
 }
 
 /* ---------------------------------------------------------
@@ -171,26 +156,9 @@ function renderActionBar(){
 }
 
 /* ---------------------------------------------------------
-   Carga a Manager (api2) - un mapeo por componente
-   Confirmar el path exacto (purchase-invoice-form / sales-invoice-form)
-   y los campos disponibles en tu instancia (son autodocumentados).
+   Carga a Manager (api2) - la llamada real la hace el backend,
+   que guarda la URL/Business ID/ApiKey de Manager en .env
 --------------------------------------------------------- */
-function mapDocARFormularioManager(doc, tipo){
-  const base = {
-    issueDate: doc.fecha,
-    reference: String(doc.folio),
-    description: doc.tipoDoc,
-    Lines: [{
-      lineDescription: doc.tipoDoc + ' ' + doc.folio,
-      UnitPrice: { value: doc.neto, currency: '' },
-      qty: 1
-    }]
-  };
-  return tipo === 'compra'
-    ? { ...base, supplier: doc.razonSocial }
-    : { ...base, customer: doc.razonSocial };
-}
-
 async function cargarAManager(documentos){
   const statusEl = document.getElementById('mp-status');
 
@@ -204,34 +172,25 @@ async function cargarAManager(documentos){
     return;
   }
 
-  const domain = document.getElementById('m-domain').value.trim().replace(/\/$/,'');
-  const businessId = document.getElementById('m-business').value.trim();
-  const apikey = document.getElementById('m-apikey').value.trim();
+  try{
+    const resp = await fetch('/api/manager/upload', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({ tipo: state.tipoActivo, documentos })
+    });
+    const data = await resp.json();
+    if(!resp.ok) throw new Error(data.error || 'Error al cargar a Manager');
 
-  if(!domain || !businessId || !apikey){
-    mostrarToast('Completa URL del servidor, Business ID y API Key de Manager.');
-    return;
-  }
-  const formPath = state.tipoActivo === 'compra' ? 'purchase-invoice-form' : 'sales-invoice-form';
-  const url = `${domain}/api2/${businessId}/${formPath}`;
+    const okIds = new Set(data.resultados.filter(r=>r.ok).map(r=>r.id));
+    const ok = okIds.size, fallidos = data.resultados.length - ok;
+    documentos.forEach(d=>{ if(okIds.has(d.id)){ d.subido = true; state.seleccionados.delete(d.id); } });
 
-  let ok = 0, fallidos = 0;
-  for(const doc of documentos){
-    try{
-      const resp = await fetch(url, {
-        method:'POST',
-        headers:{ 'X-Api-Key': apikey, 'Content-Type':'application/json' },
-        body: JSON.stringify(mapDocARFormularioManager(doc, state.tipoActivo))
-      });
-      if(resp.ok){ ok++; doc.subido = true; } else fallidos++;
-    } catch(err){ fallidos++; }
-  }
-  statusEl.textContent = fallidos === 0 ? 'conectado' : `${ok} ok / ${fallidos} error`;
-  statusEl.classList.toggle('ok', fallidos === 0);
-  mostrarToast(`Manager: ${ok} documento(s) cargados, ${fallidos} con error.`);
-  if(ok){
-    documentos.forEach(d=>{ if(d.subido) state.seleccionados.delete(d.id); });
+    statusEl.textContent = fallidos === 0 ? 'conectado' : `${ok} ok / ${fallidos} error`;
+    statusEl.classList.toggle('ok', fallidos === 0);
+    mostrarToast(`Manager: ${ok} documento(s) cargados, ${fallidos} con error.`);
     renderSummary(); renderTable(); renderActionBar();
+  } catch(err){
+    mostrarToast('Error: '+err.message);
   }
 }
 
@@ -284,13 +243,13 @@ document.getElementById('mode-demo').addEventListener('click', ()=>{
   state.mode='demo';
   document.getElementById('mode-demo').classList.add('active');
   document.getElementById('mode-live').classList.remove('active');
-  document.getElementById('notice').innerHTML = '<strong>Modo Demo activo.</strong> Se muestran datos de ejemplo para revisar el dise\u00f1o y el flujo. Cambia a <strong>API real</strong> e ingresa tu ApiKey, RUT y Clave SII para traer datos reales \u2014 ver notas de integraci\u00f3n al final de esta p\u00e1gina.';
+  document.getElementById('notice').innerHTML = '<strong>Modo Demo activo.</strong> Se muestran datos de ejemplo para revisar el dise\u00f1o y el flujo. Cambia a <strong>Conectado</strong> para consultar el SII real a trav\u00e9s de tu backend.';
 });
 document.getElementById('mode-live').addEventListener('click', ()=>{
   state.mode='live';
   document.getElementById('mode-live').classList.add('active');
   document.getElementById('mode-demo').classList.remove('active');
-  document.getElementById('notice').innerHTML = '<strong>Modo API real.</strong> Esta llamada se hace directo desde el navegador. Si tu navegador bloquea la petici\u00f3n por CORS, necesitar\u00e1s un peque\u00f1o backend intermedio (ver notas de integraci\u00f3n al final).';
+  document.getElementById('notice').innerHTML = '<strong>Modo Conectado.</strong> La consulta demora entre 40 y 120 segundos (SimpleAPI hace scraping en vivo al SII). Las credenciales viven en el backend, no aqu\u00ed.';
 });
 
 document.getElementById('btn-consultar').addEventListener('click', async ()=>{
@@ -303,12 +262,8 @@ document.getElementById('btn-consultar').addEventListener('click', async ()=>{
       await new Promise(r=>setTimeout(r, 500));
       state.documentos = generarDemo(periodo || '2026-07');
     } else {
-      const apikey = document.getElementById('f-apikey').value.trim();
-      const rut = document.getElementById('f-rut').value.trim();
-      const clave = document.getElementById('f-clave').value;
-      if(!apikey || !rut || !clave){ mostrarToast('Completa ApiKey, RUT y Clave SII.'); return; }
-      const { compra, venta } = await consultarSimpleAPI({ apikey, rut, clave, periodo });
-      state.documentos = { compra: compra.documentos || compra, venta: venta.documentos || venta };
+      btn.textContent = 'Consultando SII (puede tardar ~1-2 min)...';
+      state.documentos = await consultarRCV(periodo);
     }
     renderAll();
   } catch(err){
@@ -317,6 +272,14 @@ document.getElementById('btn-consultar').addEventListener('click', async ()=>{
     btn.disabled = false; btn.textContent = 'Consultar RCV';
   }
 });
+
+/* Estado de la conexión a Manager, consultado al backend al cargar */
+fetch('/api/manager/status').then(r=>r.json()).then(data=>{
+  const el = document.getElementById('mp-status');
+  if(!el) return;
+  el.textContent = data.configurado ? 'configurado' : 'sin configurar';
+  el.classList.toggle('ok', data.configurado);
+}).catch(()=>{});
 
 /* Render inicial con datos demo */
 state.documentos = generarDemo('2026-07');

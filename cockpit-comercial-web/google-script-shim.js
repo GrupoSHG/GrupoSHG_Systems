@@ -21,7 +21,7 @@
   'use strict';
 
   var _contador = 0;
-  var TIMEOUT_MS = 20000;
+  var TIMEOUT_MS = 45000;
 
   function crearRunner() {
     var _success = null;
