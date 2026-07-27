@@ -9,7 +9,7 @@ function doGet(e) {
     var result;
     try {
       switch (action) {
- 
+        case 'getPrensasMetrics':      result = getPrensasMetrics();      break;
         case 'getWipData':             result = getWipData();             break;
         case 'getFacturacionData':     result = getFacturacionData();     break;
         case 'getPlanPrensas':         result = getPlanPrensas();         break;
@@ -91,4 +91,55 @@ function parseDateCustom(val) {
   let fallback = new Date(val);
   if (!isNaN(fallback.getTime())) return fallback;
   return null;
+}
+// ======================================================================
+// SUPABASE — Fase 3: lectura de datos ya sincronizados por el pipeline
+// ======================================================================
+// Requiere 2 Propiedades de secuencia de comandos configuradas en ESTE
+// proyecto (dashboard-produccion), igual que ya hiciste en cockpit-comercial:
+//   SUPABASE_URL       → https://hauricnpsamnwyhondse.supabase.co
+//   SUPABASE_ANON_KEY  → tu Publishable key de Supabase
+function getSupabaseConfig_() {
+  var props = PropertiesService.getScriptProperties();
+  var url = props.getProperty('SUPABASE_URL');
+  var key = props.getProperty('SUPABASE_ANON_KEY');
+  if (!url || !key) {
+    throw new Error('Faltan SUPABASE_URL / SUPABASE_ANON_KEY en Propiedades del script');
+  }
+  return { url: url, key: key };
+}
+
+function supabaseSelect_(tabla, filtro) {
+  var cfg = getSupabaseConfig_();
+  var qs  = filtro || 'select=*';
+  var PAGE_SIZE = 1000; // límite por defecto de la API REST de Supabase
+  var todasLasFilas = [];
+  var desde = 0;
+
+  while (true) {
+    var url = cfg.url + '/rest/v1/' + tabla + '?' + qs;
+    var res = UrlFetchApp.fetch(url, {
+      method: 'get',
+      headers: {
+        'apikey': cfg.key,
+        'Authorization': 'Bearer ' + cfg.key,
+        'Range-Unit': 'items',
+        'Range': desde + '-' + (desde + PAGE_SIZE - 1)
+      },
+      muteHttpExceptions: true
+    });
+
+    var code = res.getResponseCode();
+    if (code !== 200 && code !== 206) {
+      throw new Error('Supabase [' + tabla + '] respondió ' + code + ': ' + res.getContentText().substring(0, 300));
+    }
+
+    var pagina = JSON.parse(res.getContentText());
+    todasLasFilas = todasLasFilas.concat(pagina);
+
+    if (pagina.length < PAGE_SIZE) break;
+    desde += PAGE_SIZE;
+  }
+
+  return todasLasFilas;
 }

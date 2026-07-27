@@ -31,12 +31,6 @@ function chipaxGetToken_() {
   return body.token || body.access_token;
 }
 
-/**
- * GET paginado a Chipax.
- * Soporta dos formatos de respuesta:
- *  - { items: [...], paginationAttributes: { count, totalPages, currentPage } }
- *  - { docs: [...], pages, total }
- */
 function chipaxGet_(token, endpoint, params, opts) {
   opts = opts || {};
   const H = { 'Authorization': 'JWT ' + token };
@@ -62,18 +56,16 @@ function chipaxGet_(token, endpoint, params, opts) {
     if (!items.length) break;
     all = all.concat(items);
 
-    // Detectar paginación
     if (totalPages === null) {
       const pa = body.paginationAttributes || body.pagination || null;
       if (pa) totalPages = Number(pa.totalPages || pa.total_pages || 0);
       else if (body.pages) totalPages = Number(body.pages);
     }
 
-    // Si el caller pidió "early stop" cuando todos los items cumplan condición, evaluamos
     if (opts.earlyStop && opts.earlyStop(all, items)) break;
 
     if (totalPages && page >= totalPages) break;
-    if (items.length < 50) break; // safeguard
+    if (items.length < 50) break;
     page++;
     Utilities.sleep(150);
   }
@@ -111,7 +103,6 @@ function cuentaSaldo_(c)  { return Number(c.saldo || 0); }
 
 // ── Función principal Chipax (con caché) ─────────────────────
 function getChipaxDashboard() {
-  // Intentar caché primero
   const cache = CacheService.getScriptCache();
   const cached = cache.get(CHIPAX_CACHE_KEY);
   if (cached) {
@@ -128,16 +119,8 @@ function getChipaxDashboard() {
     const desde  = chipaxInicioMes_();
     const mesAct = desde.substring(0, 7);
 
-    // DTEs: ~137 docs en 3 páginas, rápido
     const dtesTodos = chipaxGet_(token, 'dtes', {});
-
-    // Compras: 6,409 totales — solo traer las que tengan saldo pendiente
-    // No hay parámetro server-side para filtrar, así que paramos cuando ya llegamos a páginas viejas pagadas
-    // En la práctica las primeras páginas son las más recientes (pendientes)
-    // Limitamos a 30 páginas (= 1500 docs) para evitar timeout
     const comprasTodas = chipaxGet_(token, 'compras', {}, { maxPages: 30 });
-
-    // Datos del mes
     const gastosMes   = chipaxGet_(token, 'gastos', { fecha_desde: desde }, { maxPages: 5 });
     const cuentasCtes = chipaxGet_(token, 'cuentas-corrientes');
     const movimientos = chipaxGet_(token, 'movimientos', { fecha_desde: desde }, { maxPages: 5 });
@@ -145,7 +128,6 @@ function getChipaxDashboard() {
 
     const saldoBancos = cuentasCtes.reduce(function(a,c) { return a + cuentaSaldo_(c); }, 0);
 
-    // Ventas MTD: facturas tipo 33/34 emitidas este mes - notas crédito del mes
     const facturasMes = dtesTodos.filter(function(d) {
       return dteEsFactura_(d) && !dteAnulado_(d) &&
              String(d.fechaEmision || '').startsWith(mesAct);
@@ -159,22 +141,18 @@ function getChipaxDashboard() {
     const ncMonto   = ncMes.reduce(function(a,d) { return a + dteMontoNeto_(d); }, 0);
     const ventasMTD = ventasBrutas - ncMonto;
 
-    // CxC: facturas con saldoDeudor > 0 (Saldo.saldoDeudor ya descuenta cartolas)
     const facturasPendientes = dtesTodos.filter(function(d) {
       return dteEsFactura_(d) && !dteAnulado_(d) && dteSaldoDeudor_(d) > 0;
     });
     const totalCXC = facturasPendientes.reduce(function(a,d) { return a + dteSaldoDeudor_(d); }, 0);
 
-    // Compras MTD
     const cmpMes = comprasTodas.filter(function(f) {
       return !cmpAnulada_(f) && String(f.fechaEmision || '').startsWith(mesAct);
     });
     const comprasMTD = cmpMes.reduce(function(a,f) { return a + cmpMontoNeto_(f); }, 0);
 
-    // Gastos MTD
     const gastosMTD = gastosMes.reduce(function(a,g) { return a + Number(g.monto || 0); }, 0);
 
-    // CxP: todas las compras con saldoDeudor > 0
     const pendientesC = comprasTodas.filter(function(f) {
       return !cmpAnulada_(f) && cmpSaldoDeudor_(f) > 0;
     });
@@ -186,12 +164,6 @@ function getChipaxDashboard() {
 
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
     Logger.log('Chipax completo en ' + elapsed + 's');
-    Logger.log('saldoBancos: $' + Math.round(saldoBancos/1e6) + 'M');
-    Logger.log('ventasMTD:   $' + Math.round(ventasMTD/1e6)   + 'M (' + facturasMes.length + ' fact - ' + ncMes.length + ' NC)');
-    Logger.log('comprasMTD:  $' + Math.round(comprasMTD/1e6)  + 'M (' + cmpMes.length + ' docs mes)');
-    Logger.log('gastosMTD:   $' + Math.round(gastosMTD/1e6)   + 'M');
-    Logger.log('totalCXC:    $' + Math.round(totalCXC/1e6)    + 'M (' + facturasPendientes.length + ' facturas)');
-    Logger.log('totalCXP:    $' + Math.round(totalCXP/1e6)    + 'M (' + pendientesC.length + ' compras)');
 
     const facturasVentaFmt = facturasPendientes
       .sort(function(a,b) { return new Date(b.fechaEmision||0) - new Date(a.fechaEmision||0); })
@@ -258,7 +230,6 @@ function getChipaxDashboard() {
       movimientosRecientes     : movsFmt,
     };
 
-    // Guardar en caché
     try {
       cache.put(CHIPAX_CACHE_KEY, JSON.stringify(result), CHIPAX_CACHE_TTL);
     } catch(e) {
@@ -316,23 +287,14 @@ function getResumenPolchile() {
 }
 
 function testChipax() {
-  chipaxLimpiarCache(); // forzar refresh
+  chipaxLimpiarCache();
   const data = getChipaxDashboard();
   if (data.error) { Logger.log('❌ ' + data.error); return; }
   Logger.log('✓ Chipax OK');
-  Logger.log('  saldoBancos: $' + Math.round(data.saldoBancos/1e6) + 'M');
-  Logger.log('  ventasMTD:   $' + Math.round(data.ventasMTD/1e6)   + 'M');
-  Logger.log('  comprasMTD:  $' + Math.round(data.comprasMTD/1e6)  + 'M');
-  Logger.log('  totalCXC:    $' + Math.round(data.totalCXC/1e6)    + 'M (' + data.cxcCount + ' facturas)');
-  Logger.log('  totalCXP:    $' + Math.round(data.totalCXP/1e6)    + 'M (' + data.cxpCount + ')');
-  Logger.log('  cuentas:     '  + data.cuentasBancarias.length);
 }
 
 // ======================================================================
-// WEB APP
-// ======================================================================
-// ======================================================================
-// WEB APP
+// WEB APP — doGet con router de acciones (JSONP) + modo HTML original
 // ======================================================================
 function doGet(e) {
   var action   = e && e.parameter && e.parameter.action;
@@ -342,8 +304,6 @@ function doGet(e) {
     var result;
     try {
       switch (action) {
-        // 'data' y 'buildDashboardPayload' son alias de la misma función
-        // (el frontend llama .buildDashboardPayload() vía google.script.run)
         case 'data':
         case 'buildDashboardPayload': result = buildDashboardPayload(); break;
         case 'getResumenPolchile':    result = getResumenPolchile();    break;
@@ -356,9 +316,6 @@ function doGet(e) {
     }
 
     if (callback) {
-      // JSONP: la respuesta se envuelve como JS ejecutable, cargado por el
-      // frontend vía <script src="...">. Esto evita el problema de CORS
-      // que Apps Script tiene con fetch() desde otro origen.
       return ContentService
         .createTextOutput(callback + '(' + JSON.stringify(result) + ');')
         .setMimeType(ContentService.MimeType.JAVASCRIPT);
@@ -369,7 +326,6 @@ function doGet(e) {
       .setMimeType(ContentService.MimeType.JSON);
   }
 
-  // Modo HTML normal (el Apps Script Web App original, sigue funcionando igual)
   const t = HtmlService.createTemplateFromFile('Index');
   t.scriptUrl = ScriptApp.getService().getUrl();
   return t.evaluate()
@@ -382,12 +338,63 @@ function include(filename) {
   return HtmlService.createHtmlOutputFromFile(filename).getContent();
 }
 
-function include(filename) {
-  return HtmlService.createHtmlOutputFromFile(filename).getContent();
+// ======================================================================
+// SUPABASE — Fase 3: lectura de datos ya sincronizados por el pipeline
+// ======================================================================
+// Requiere 2 Propiedades de secuencia de comandos configuradas:
+//   SUPABASE_URL       → https://hauricnpsamnwyhondse.supabase.co
+//   SUPABASE_ANON_KEY  → tu Publishable key de Supabase (Settings → API →
+//                          Publishable key, empieza con sb_publishable_...)
+//
+// OJO: usamos la Publishable key, NO la Secret key — Apps Script (UrlFetchApp)
+// no permite sobreescribir el header User-Agent, y Supabase bloquea con 401
+// cualquier Secret key que "parezca" venir de un navegador. La Publishable
+// key no tiene esa restricción; el acceso de solo-lectura a estas tablas
+// está permitido vía una política de Row Level Security (ver habilitar_rls.sql).
+function getSupabaseConfig_() {
+  var props = PropertiesService.getScriptProperties();
+  var url = props.getProperty('SUPABASE_URL');
+  var key = props.getProperty('SUPABASE_ANON_KEY');
+  if (!url || !key) {
+    throw new Error('Faltan SUPABASE_URL / SUPABASE_ANON_KEY en Propiedades del script');
+  }
+  return { url: url, key: key };
 }
 
-function include(filename) {
-  return HtmlService.createHtmlOutputFromFile(filename).getContent();
+function supabaseSelect_(tabla, filtro) {
+  var cfg = getSupabaseConfig_();
+  var qs  = filtro || 'select=*';
+  var PAGE_SIZE = 1000; // límite por defecto de la API REST de Supabase
+  var todasLasFilas = [];
+  var desde = 0;
+
+  while (true) {
+    var url = cfg.url + '/rest/v1/' + tabla + '?' + qs;
+    var res = UrlFetchApp.fetch(url, {
+      method: 'get',
+      headers: {
+        'apikey': cfg.key,
+        'Authorization': 'Bearer ' + cfg.key,
+        'Range-Unit': 'items',
+        'Range': desde + '-' + (desde + PAGE_SIZE - 1)
+      },
+      muteHttpExceptions: true
+    });
+
+    var code = res.getResponseCode();
+    // 200 = respuesta completa, 206 = respuesta parcial (hay más páginas)
+    if (code !== 200 && code !== 206) {
+      throw new Error('Supabase [' + tabla + '] respondió ' + code + ': ' + res.getContentText().substring(0, 300));
+    }
+
+    var pagina = JSON.parse(res.getContentText());
+    todasLasFilas = todasLasFilas.concat(pagina);
+
+    if (pagina.length < PAGE_SIZE) break; // última página
+    desde += PAGE_SIZE;
+  }
+
+  return todasLasFilas;
 }
 
 // ======================================================================
@@ -767,7 +774,7 @@ function buildDashboardPayload() {
       return 0;
     };
 
-    // 1. PIPELINE CRM
+    // 1. PIPELINE CRM (sigue leyendo Sheet — no está en Supabase todavía)
     const sheetCRM = ss.getSheets().find(s => normalizarTexto(s.getName()).includes('pipelinesummary'));
     if (sheetCRM) {
       const rawCRM   = sheetCRM.getDataRange().getValues();
@@ -794,186 +801,137 @@ function buildDashboardPayload() {
       }
     }
 
-    // 2. COTIZADO MTD
+    // 2. COTIZADO MTD (Supabase: tabla 'cotizaciones', antes leía el Sheet 'Cotizaciones')
     let cotizadoMTD = 0;
-    const sheetCot = ss.getSheets().find(s => normalizarTexto(s.getName()) === 'cotizaciones');
-    if (sheetCot) {
-      const rawTxt = sheetCot.getDataRange().getDisplayValues();
-      const rawNum = sheetCot.getDataRange().getValues();
-      for (let i = 1; i < rawTxt.length; i++) {
-        const docStr  = String(rawTxt[i][0] || '').toLowerCase().trim();
-        const probStr = String(rawTxt[i][3] || '').toLowerCase().trim();
-        const total   = rawNum[i][6];
-        if (!docStr || docStr.includes('total') || docStr.includes('documento')) continue;
-        if (probStr.includes('rechazad')) continue;
-        const p = String(rawTxt[i][1]).trim().split(/[-/]/);
-        if (p.length === 3) {
-          let y, m, d;
-          if (p[0].length === 4) { y = parseInt(p[0]); m = parseInt(p[1]); d = parseInt(p[2]); }
-          else                   { y = parseInt(p[2]); m = parseInt(p[1]); d = parseInt(p[0]); }
-          if (y === currentYear && m === (currentMonth + 1) && d <= currentDay) {
-            cotizadoMTD += Math.abs(leerNumero(total));
-          }
+    try {
+      const filasCot = supabaseSelect_('cotizaciones');
+      filasCot.forEach(function(row) {
+        const probStr = String(row.probabilidad || '').toLowerCase().trim();
+        if (probStr.includes('rechazad')) return;
+        const total = row.total;
+        const f = parsearFecha(row.fecha);
+        if (f && f.y === currentYear && f.m0 === currentMonth && f.d <= currentDay) {
+          cotizadoMTD += Math.abs(leerNumero(total));
         }
-      }
+      });
+    } catch (e) {
+      Logger.log('Error leyendo cotizaciones desde Supabase: ' + e.message);
     }
 
-    // 3. VENTAS FULL MANAGER
-    const hojaVentas = ss.getSheetByName("Ventas Full Manager") || ss.getSheetByName("Ventas_Full");
-    if (hojaVentas) {
-      const dataV = hojaVentas.getDataRange().getValues();
-      if (dataV && dataV.length > 1) {
-        const enc = dataV[0].map(h => h.toString().trim().toLowerCase());
+    // 3. VENTAS FULL MANAGER (Supabase: tabla 'ventas_full', antes leía "Ventas Full Manager")
+    try {
+      const filasVentas = supabaseSelect_('ventas_full');
 
-        const _docto   = enc.findIndex(h => h === 'docto');
-        const _fechaV  = enc.findIndex(h => h === 'fecha_emision');
-        const _mesText = enc.findIndex(h => h === 'mes');
-        const _neto    = enc.findIndex(h => h === 'total_neto');
-        const _cliente = enc.findIndex(h => h === 'cliente');
-        const _familia = enc.findIndex(h => h === 'clase1');
-        const _cto     = enc.findIndex(h => h === 'cto_promedio_total');
-        const _codvdd  = enc.findIndex(h => h === 'cod_vddor') !== -1 ? enc.findIndex(h => h === 'cod_vddor') : 5;
+      const MESES_ENG = ["january","february","march","april","may","june","july","august","september","october","november","december"];
+      const MESES_ESP = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
 
-        const iDoc = _docto   !== -1 ? _docto   : 0;
-        const iFec = _fechaV  !== -1 ? _fechaV  : 3;
-        const iMes = _mesText !== -1 ? _mesText : 8;
-        const iNet = _neto    !== -1 ? _neto    : 30;
-        const iCli = _cliente !== -1 ? _cliente : 10;
-        const iFam = _familia !== -1 ? _familia : 15;
-        const iCto = _cto     !== -1 ? _cto     : 31;
+      let fact7dTotal = 0;
+      let fact7dN     = 0;
 
-        const MESES_ENG = ["january","february","march","april","may","june","july","august","september","october","november","december"];
-        const MESES_ESP = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+      filasVentas.forEach(function(fila) {
+        if (!fila || !fila.docto) return;
 
-        let fact7dTotal = 0;
-        let fact7dN     = 0;
+        const tipo  = String(fila.docto).trim().toUpperCase();
+        const esFav = tipo === 'FAV' || tipo === 'FA' || tipo.includes('FAV');
+        const esNcv = tipo === 'NCV' || tipo === 'NC';
+        if (!esFav && !esNcv) return;
 
-        for (let i = 1; i < dataV.length; i++) {
-          const fila = dataV[i];
-          if (!fila || fila.length <= iNet || !fila[iDoc]) continue;
-          if (String(fila[0]).toLowerCase().includes('total')) continue;
+        let f    = parsearFecha(fila.fecha_emision);
+        let fYTD = f;
 
-          const tipo  = String(fila[iDoc]).trim().toUpperCase();
-          const esFav = tipo === 'FAV' || tipo === 'FA' || tipo.includes('FAV');
-          const esNcv = tipo === 'NCV' || tipo === 'NC';
-          if (!esFav && !esNcv) continue;
-
-          let f    = parsearFecha(fila[iFec]);
-          let fYTD = f;
-
-          if (!fYTD && fila[iMes]) {
-            const txt = String(fila[iMes]).toLowerCase().trim();
-            let idx   = MESES_ENG.findIndex(m => txt.includes(m));
-            if (idx === -1) idx = MESES_ESP.findIndex(m => txt.includes(m));
-            if (idx !== -1) fYTD = { y: currentYear, m0: idx, d: 1 };
-          }
-
-          const valorAbs  = Math.abs(leerNumero(fila[iNet]));
-          const netoSigno = esNcv ? -valorAbs : valorAbs;
-
-          if (fYTD && fYTD.m0 >= 0 && fYTD.m0 <= 11) {
-            managerStats.facturacionMensual[fYTD.m0] += netoSigno;
-            totalFacturadoYTD += netoSigno;
-            totalNetoYTD += netoSigno;
-            const ctoFila = Math.abs(leerNumero(fila[iCto]));
-            totalCtoYTD  += esNcv ? -ctoFila : ctoFila;
-          }
-
-          const nomCli = fila[iCli] ? String(fila[iCli]).trim() : '';
-          if (nomCli) clientesData[nomCli] = (clientesData[nomCli] || 0) + netoSigno;
-
-          const codVdd = String(fila[_codvdd] || '').trim().toUpperCase();
-          const vddKey = COD_VDDOR_MAP[codVdd] || 'otros';
-          vendedorStats[vddKey].facturado += netoSigno;
-
-          if (f && f.y === currentYear && f.m0 === currentMonth && f.d <= currentDay) {
-            if (!vendedorStats[vddKey].facturadoMTD) vendedorStats[vddKey].facturadoMTD = 0;
-            vendedorStats[vddKey].facturadoMTD += esNcv ? -valorAbs : valorAbs;
-          }
-
-          const nomFam = fila[iFam] ? String(fila[iFam]).trim() : '';
-          if (nomFam) {
-            if (!familiasData[nomFam]) familiasData[nomFam] = { neto: 0, cto: 0 };
-            familiasData[nomFam].neto += netoSigno;
-            const ctoFilaFam = Math.abs(leerNumero(fila[iCto]));
-            familiasData[nomFam].cto += esNcv ? -ctoFilaFam : ctoFilaFam;
-          }
-
-          if (f && f.y === currentYear && f.m0 === currentMonth && f.d <= currentDay) {
-            if (esFav) totalFavMes += valorAbs;
-            if (esNcv) totalNcvMes += valorAbs;
-            const wk = Math.min(Math.floor((f.d-1)/7), 4);
-            semanasDelMes[wk].vendido += netoSigno / 1000000;
-            if (f.d >= 1 && f.d <= totalDiasMes) graficoDiarioData[f.d-1].fact += netoSigno / 1000000;
-          }
-
-          if (f) {
-            const fechaReal = new Date(f.y, f.m0, f.d);
-            if (fechaReal >= hace7dias) {
-              fact7dTotal += netoSigno;
-              if (esFav) fact7dN++;
-            }
-          }
+        if (!fYTD && fila.mes) {
+          const txt = String(fila.mes).toLowerCase().trim();
+          let idx   = MESES_ENG.findIndex(m => txt.includes(m));
+          if (idx === -1) idx = MESES_ESP.findIndex(m => txt.includes(m));
+          if (idx !== -1) fYTD = { y: currentYear, m0: idx, d: 1 };
         }
 
-        managerStats._fact7dTotal = fact7dTotal;
-        managerStats._fact7dN     = fact7dN;
-      }
+        const valorAbs  = Math.abs(leerNumero(fila.total_neto));
+        const netoSigno = esNcv ? -valorAbs : valorAbs;
+
+        if (fYTD && fYTD.m0 >= 0 && fYTD.m0 <= 11) {
+          managerStats.facturacionMensual[fYTD.m0] += netoSigno;
+          totalFacturadoYTD += netoSigno;
+          totalNetoYTD += netoSigno;
+          const ctoFila = Math.abs(leerNumero(fila.cto_promedio_total));
+          totalCtoYTD  += esNcv ? -ctoFila : ctoFila;
+        }
+
+        const nomCli = fila.cliente ? String(fila.cliente).trim() : '';
+        if (nomCli) clientesData[nomCli] = (clientesData[nomCli] || 0) + netoSigno;
+
+        const codVdd = String(fila.cod_vddor || '').trim().toUpperCase();
+        const vddKey = COD_VDDOR_MAP[codVdd] || 'otros';
+        vendedorStats[vddKey].facturado += netoSigno;
+
+        if (f && f.y === currentYear && f.m0 === currentMonth && f.d <= currentDay) {
+          if (!vendedorStats[vddKey].facturadoMTD) vendedorStats[vddKey].facturadoMTD = 0;
+          vendedorStats[vddKey].facturadoMTD += esNcv ? -valorAbs : valorAbs;
+        }
+
+        const nomFam = fila.clase1 ? String(fila.clase1).trim() : '';
+        if (nomFam) {
+          if (!familiasData[nomFam]) familiasData[nomFam] = { neto: 0, cto: 0 };
+          familiasData[nomFam].neto += netoSigno;
+          const ctoFilaFam = Math.abs(leerNumero(fila.cto_promedio_total));
+          familiasData[nomFam].cto += esNcv ? -ctoFilaFam : ctoFilaFam;
+        }
+
+        if (f && f.y === currentYear && f.m0 === currentMonth && f.d <= currentDay) {
+          if (esFav) totalFavMes += valorAbs;
+          if (esNcv) totalNcvMes += valorAbs;
+          const wk = Math.min(Math.floor((f.d - 1) / 7), 4);
+          semanasDelMes[wk].vendido += netoSigno / 1000000;
+          if (f.d >= 1 && f.d <= totalDiasMes) graficoDiarioData[f.d - 1].fact += netoSigno / 1000000;
+        }
+
+        if (f) {
+          const fechaReal = new Date(f.y, f.m0, f.d);
+          if (fechaReal >= hace7dias) {
+            fact7dTotal += netoSigno;
+            if (esFav) fact7dN++;
+          }
+        }
+      });
+
+      managerStats._fact7dTotal = fact7dTotal;
+      managerStats._fact7dN     = fact7dN;
+    } catch (e) {
+      Logger.log('Error leyendo ventas_full desde Supabase: ' + e.message);
     }
 
     const facturadoMTD       = totalFavMes - totalNcvMes;
     managerStats.facturacion = totalFacturadoYTD;
     managerStats.margen      = totalNetoYTD - totalCtoYTD;
 
-    // 4. BACKLOG NV→FACT
+    // 4. BACKLOG NV→FACT (Supabase: tabla 'calendario', antes leía el Sheet 'Calendario')
     let porFacturar = 0;
-    const hojaCalendario = ss.getSheetByName("Calendario");
-    if (hojaCalendario) {
-      const dataCal = hojaCalendario.getDataRange().getValues();
-      const headCal = dataCal[0].map(h => normalizarTexto(h));
-
-      let colPesos = headCal.findIndex(h => h.includes('pesos') && h.includes('facturar'));
-      if (colPesos === -1) colPesos = headCal.findIndex(h => h.includes('monto') || h.includes('total') || h.includes('pesos'));
-
-      let colFechaCal = headCal.findIndex(h => h.includes('fecha_entrega_final'));
-      if (colFechaCal === -1) colFechaCal = headCal.findIndex(h => h.includes('fecha_entrega'));
-      if (colFechaCal === -1) colFechaCal = headCal.findIndex(h => h === 'fecha' || h.includes('fecha'));
-
-      if (colPesos !== -1) {
-        for (let i = 1; i < dataCal.length; i++) {
-          if (!dataCal[i] || !dataCal[i][0]) continue;
-          if (String(dataCal[i][0]).toLowerCase().includes('total')) continue;
-
-          let esMesActual = false;
-          if (colFechaCal !== -1) {
-            const fCal = parsearFecha(dataCal[i][colFechaCal]);
-            if (fCal && fCal.y === currentYear && fCal.m0 === currentMonth) esMesActual = true;
-          }
-          if (!esMesActual && colFechaCal === -1) esMesActual = true;
-          if (esMesActual) porFacturar += Math.abs(leerNumero(dataCal[i][colPesos]));
+    try {
+      const filasCal = supabaseSelect_('calendario');
+      filasCal.forEach(function(row) {
+        const fCal = parsearFecha(row.fecha_entrega_final);
+        if (fCal && fCal.y === currentYear && fCal.m0 === currentMonth) {
+          porFacturar += Math.abs(leerNumero(row.pesos_por_facturar));
         }
-      }
+      });
+    } catch (e) {
+      Logger.log('Error leyendo calendario desde Supabase: ' + e.message);
     }
 
-    // 5. NV EMITIDAS
+    // 5. NV EMITIDAS (Supabase: tabla 'notas_de_venta', antes leía "Notas de Venta")
     let nvEmitidasMTD = 0;
     let nvEmitidasYTD = 0;
-    const sheetNV = ss.getSheets().find(s => normalizarTexto(s.getName()).includes('notas de venta'));
-    if (sheetNV) {
-      const rawNV   = sheetNV.getDataRange().getValues();
-      const headNV  = rawNV[0].map(h => normalizarTexto(h));
-      const colNeto = headNV.findIndex(h => h === 'total_neto' || h === 'totneto');
-      const colFNV  = headNV.indexOf('fecha') !== -1 ? headNV.indexOf('fecha') : 1;
-      const iNeto   = colNeto !== -1 ? colNeto : 3;
-      const colCodVddNV = headNV.findIndex(h => h === 'codvend' || h === 'cod_vddor' || h.includes('codvend'));
-      for (let i = 1; i < rawNV.length; i++) {
-        if (String(rawNV[i][0] || '').toLowerCase().includes('total')) continue;
-        const val = Math.abs(leerNumero(rawNV[i][iNeto]));
-        if (!val) continue;
-        const fNV = parsearFecha(rawNV[i][colFNV]);
-        if (colCodVddNV !== -1 && fNV && fNV.y === currentYear && fNV.m0 === currentMonth) {
-          const codVddNV = String(rawNV[i][colCodVddNV] || '').trim().toUpperCase();
-          const vddKeyNV = COD_VDDOR_MAP[codVddNV] || 'otros';
+    try {
+      const filasNV = supabaseSelect_('notas_de_venta');
+      filasNV.forEach(function(row) {
+        const val = Math.abs(leerNumero(row.totneto));
+        if (!val) return;
+
+        const fNV = parsearFecha(row.fecha);
+        const codVddNV = String(row.codvend || '').trim().toUpperCase();
+        const vddKeyNV = COD_VDDOR_MAP[codVddNV] || 'otros';
+
+        if (fNV && fNV.y === currentYear && fNV.m0 === currentMonth) {
           vendedorStats[vddKeyNV].nv += val / 1000000;
         }
         if (fNV && fNV.y === currentYear) nvEmitidasYTD += val;
@@ -981,10 +939,12 @@ function buildDashboardPayload() {
           nvEmitidasMTD += val;
           if (fNV.d >= 1 && fNV.d <= totalDiasMes) graficoDiarioNV[fNV.d - 1].nv += val / 1000000;
         }
-      }
+      });
+    } catch (e) {
+      Logger.log('Error leyendo notas_de_venta desde Supabase: ' + e.message);
     }
 
-    // 6. GHL_OPPORTUNITIES
+    // 6. GHL_OPPORTUNITIES (sigue leyendo Sheet)
     const movimientosHoy    = [];
     const sinMovimiento     = [];
     const cierresPendientes = [];
@@ -1065,22 +1025,6 @@ function buildDashboardPayload() {
               dias: refSinMov ? diasDesde_(refSinMov, now) : 0,
             });
           }
-        }
-      }
-
-      const shCot = ss.getSheetByName("Cotizaciones");
-      if (shCot) {
-        const rawCot = shCot.getDataRange().getValues();
-        for (let i = 1; i < rawCot.length; i++) {
-          const prob = String(rawCot[i][3] || '').trim().toLowerCase();
-          if (prob === 'rechazada') continue;
-          const codVdd = String(rawCot[i][4] || '').trim().toUpperCase();
-          const total  = Math.abs(leerNumero(rawCot[i][6]));
-          if (!total) continue;
-          const fCot = parsearFecha(rawCot[i][1]);
-          if (!fCot || fCot.y !== currentYear || fCot.m0 !== currentMonth) continue;
-          const vKey = COD_VDDOR_MAP[codVdd] || 'otros';
-          vendedorStats[vKey].cotizado += total / 1000000;
         }
       }
 
