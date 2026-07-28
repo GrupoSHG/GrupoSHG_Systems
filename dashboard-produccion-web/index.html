@@ -10,7 +10,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
   // AJUSTAR: URL /exec del deployment de Apps Script de dashboard-produccion
-  window.__SCRIPT_URL__ = 'https://script.google.com/macros/s/AKfycbxA_Iy0Zr4YOl6LFsN1oEq74Cb-0MVM0pS4Gs-3-X5GLtikCY1fKK4Y77ecjeU6pwd6/exec';
+  window.__SCRIPT_URL__ = 'https://script.google.com/macros/s/TU_ID_DE_DEPLOYMENT/exec';
 </script>
 <script src="google-script-shim.js"></script>
 <style>
@@ -912,58 +912,6 @@ function App() {
 
       {sysError&&<div className="sys-error"><span>⚠️ {sysError}</span><span style={{cursor:'pointer'}} onClick={()=>setSysError(null)}>✖</span></div>}
       {planError&&<div className="sys-error"><span>⚠️ {planError}</span><span style={{cursor:'pointer'}} onClick={()=>setPlanError(null)}>✖</span></div>}
-
-      <div className="section-title">Catálogo · Valor de Stock</div>
-      <div className="kpi-grid grid-3">
-        <div className="kpi" style={{borderLeft:'4px solid #16906A'}}>
-          <div>
-            <div className="kpi-label">Valor Total en Stock</div>
-            <div className="kpi-value" style={{color:'#16906A'}}>
-              <span style={{fontSize:22,marginRight:6,color:'var(--text-3)'}}>$</span>
-              {fmtM(catalogo.totalValor)}<span className="kpi-unit" style={{color:'#16906A'}}>M$</span>
-            </div>
-          </div>
-        </div>
-        <div className="kpi">
-          <div>
-            <div className="kpi-label">Unidades en Stock</div>
-            <div className="kpi-value">{fmt(catalogo.totalUnidades)}<span className="kpi-unit">UN</span></div>
-          </div>
-        </div>
-        <div className="kpi">
-          <div>
-            <div className="kpi-label">SKUs Catalogados</div>
-            <div className="kpi-value">{fmt(catalogo.totalItems)}<span className="kpi-unit">SKU</span></div>
-          </div>
-        </div>
-      </div>
-      <div className="card" style={{maxHeight:480, overflowY:'auto'}}>
-        <table>
-          <thead>
-            <tr>
-              <th>Producto</th>
-              <th>Familia</th>
-              <th style={{textAlign:'right'}}>Precio Unit.</th>
-              <th style={{textAlign:'right'}}>Stock</th>
-              <th style={{textAlign:'right'}}>Valor Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(catalogo.items||[]).map((it,i)=>(
-              <tr key={i}>
-                <td>
-                  <div style={{fontWeight:600}}>{it.producto}</div>
-                  {it.codigo && <div className="bodega-tag">{it.codigo}</div>}
-                </td>
-                <td style={{color:'var(--text-2)'}}>{it.familia||'—'}</td>
-                <td style={{textAlign:'right'}} className="mono">${fmt(it.precio)}</td>
-                <td style={{textAlign:'right'}} className="mono">{fmt(it.stock)}</td>
-                <td style={{textAlign:'right',fontWeight:700}} className="mono">${fmt(it.total)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
 
       <div className="section-title">Producción Día Anterior</div>
       <div style={{display:'grid',gridTemplateColumns:'280px 1fr',gap:20,marginBottom:30,alignItems:'stretch'}}>
