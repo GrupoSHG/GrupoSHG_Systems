@@ -47,6 +47,12 @@ DTE_MAIL_IMAP_PORT = int(os.environ.get("DTE_MAIL_IMAP_PORT", "993"))
 DTE_MAIL_USER      = os.environ.get("DTE_MAIL_USER")
 DTE_MAIL_PASSWORD  = os.environ.get("DTE_MAIL_PASSWORD")  # app password, no la clave normal
 
+# Boufin - confirmación de transferencias recibidas (Santander)
+BOUFIN_API_KEY                = os.environ.get("BOUFIN_API_KEY")
+SANTANDER_RUT_HOMEBANKING     = os.environ.get("SANTANDER_RUT_HOMEBANKING")
+SANTANDER_CLAVE_HOMEBANKING   = os.environ.get("SANTANDER_CLAVE_HOMEBANKING")
+BOUFIN_HOST = "https://api.boufin.cl"  # confirmar host exacto en la documentación de Boufin
+
 SIMPLEAPI_HOST = "https://servicios.simpleapi.cl"
 
 REQUIRED_VARS = [
@@ -252,6 +258,92 @@ def api_cuenta_contable(codigo):
     if cuenta is None:
         return jsonify({"encontrado": False, "cuenta": None}), 404
     return jsonify({"encontrado": True, "cuenta": cuenta})
+
+
+# ---------------------------------------------------------------
+# Boufin - confirmación de transferencias recibidas (Banco Santander)
+# La sesión de Boufin dura 1h; se cachea en memoria para no re-loguear
+# en cada consulta. NOTA: los nombres de endpoints/campos exactos deben
+# confirmarse contra la documentación técnica de Boufin antes de producción.
+# ---------------------------------------------------------------
+_boufin_sesion = {"token": None, "expira": 0}
+
+
+def boufin_login():
+    import time
+    if _boufin_sesion["token"] and _boufin_sesion["expira"] > time.time():
+        return _boufin_sesion["token"]
+
+    if not BOUFIN_API_KEY:
+        raise RuntimeError("Falta BOUFIN_API_KEY en .env")
+
+    resp = requests.post(
+        f"{BOUFIN_HOST}/api/v1/auth/login",
+        headers={"Content-Type": "application/json"},
+        json={"apiKey": BOUFIN_API_KEY},
+        timeout=20,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    token = data.get("sessionToken")
+    if not token:
+        raise RuntimeError("Boufin no devolvió sessionToken")
+
+    _boufin_sesion["token"] = token
+    _boufin_sesion["expira"] = time.time() + 55 * 60  # renueva 5 min antes de expirar
+    return token
+
+
+def boufin_tarea(action, payload):
+    token = boufin_login()
+    resp = requests.post(
+        f"{BOUFIN_HOST}/api/v1/tasks",
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        json={"action": action, **payload},
+        timeout=60,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def boufin_credenciales_banco():
+    if not (SANTANDER_RUT_HOMEBANKING and SANTANDER_CLAVE_HOMEBANKING):
+        raise RuntimeError("Falta SANTANDER_RUT_HOMEBANKING / SANTANDER_CLAVE_HOMEBANKING en .env")
+    return {"rut": SANTANDER_RUT_HOMEBANKING, "clave": SANTANDER_CLAVE_HOMEBANKING}
+
+
+def boufin_consultar_transferencias():
+    data = boufin_tarea("banco-santander:transfer", boufin_credenciales_banco())
+    # Parseo defensivo: ajustar la(s) llave(s) reales una vez confirmadas contra Boufin
+    candidatos = [data.get("transferencias"), data.get("movimientos"), data.get("data")]
+    arr = next((c for c in candidatos if isinstance(c, list)), [])
+    return [{
+        "id": m.get("id") or i,
+        "fecha": m.get("fecha") or m.get("date"),
+        "monto": float(m.get("monto") or m.get("amount") or 0),
+        "glosa": m.get("glosa") or m.get("detail") or "",
+        "origen": m.get("origen") or m.get("sender") or "",
+    } for i, m in enumerate(arr)]
+
+
+def boufin_consultar_saldo():
+    data = boufin_tarea("banco-santander:balance", boufin_credenciales_banco())
+    return float(data.get("saldo") or data.get("balance") or 0)
+
+
+@app.route("/api/transferencias")
+def api_transferencias():
+    try:
+        saldo = boufin_consultar_saldo()
+        transferencias = boufin_consultar_transferencias()
+    except RuntimeError as e:
+        return jsonify({"error": str(e)}), 500
+    except requests.HTTPError as e:
+        return jsonify({"error": f"Boufin respondió con error: {e}"}), 502
+    except requests.Timeout:
+        return jsonify({"error": "Boufin no respondió a tiempo (timeout)"}), 504
+
+    return jsonify({"saldo": saldo, "transferencias": transferencias})
 
 
 # ---------------------------------------------------------------

@@ -259,6 +259,10 @@ const MODULOS = {
   subidas: {
     titulo: 'Facturas Subidas',
     subtitulo: 'Documentos de compra y venta ya cargados a Manager.'
+  },
+  transferencias: {
+    titulo: 'Transferencias',
+    subtitulo: 'Confirmaci\u00f3n de transferencias recibidas y saldo disponible, v\u00eda Boufin sobre Banco Santander.'
   }
 };
 
@@ -271,11 +275,23 @@ document.querySelectorAll('.navitem').forEach(item=>{
     document.getElementById('titulo').textContent = m.titulo;
     document.getElementById('subtitulo').textContent = m.subtitulo;
     state.seleccionados.clear();
+
+    const esTransferencias = state.tipoActivo === 'transferencias';
     const esSubidas = state.tipoActivo === 'subidas';
-    document.querySelector('.config').style.display = esSubidas ? 'none' : 'flex';
-    document.getElementById('notice').style.display = esSubidas ? 'none' : 'block';
-    document.querySelector('.manager-panel').style.display = esSubidas ? 'none' : 'block';
+
+    document.querySelector('.config').style.display = (esSubidas || esTransferencias) ? 'none' : 'flex';
+    document.getElementById('notice').style.display = (esSubidas || esTransferencias) ? 'none' : 'block';
+    document.querySelector('.manager-panel').style.display = (esSubidas || esTransferencias) ? 'none' : 'block';
     document.getElementById('folio-panel').style.display = state.tipoActivo === 'compra' ? 'block' : 'none';
+
+    document.getElementById('summary').style.display = esTransferencias ? 'none' : 'grid';
+    document.getElementById('table-wrap').style.display = esTransferencias ? 'none' : 'block';
+    document.getElementById('action-bar-slot').style.display = esTransferencias ? 'none' : 'block';
+    document.getElementById('transferencias-view').style.display = esTransferencias ? 'block' : 'none';
+
+    if(esTransferencias && !document.getElementById('saldo-valor').dataset.cargado){
+      actualizarTransferencias();
+    }
     renderAll();
   });
 });
@@ -526,6 +542,71 @@ async function cargarDetalleAManager(){
     btn.disabled = false; btn.textContent = 'Cargar detalle a Manager';
   }
 }
+
+/* ---------------------------------------------------------
+   Transferencias (Boufin / Santander): saldo + movimientos recibidos
+--------------------------------------------------------- */
+function fmtCLP(n){ return '$'+Number(n||0).toLocaleString('es-CL'); }
+
+async function actualizarTransferencias(){
+  const btn = document.getElementById('btn-actualizar-transferencias');
+  const saldoEl = document.getElementById('saldo-valor');
+  const metaEl = document.getElementById('ultima-actualizacion');
+  const tableWrap = document.getElementById('transferencias-table-wrap');
+
+  btn.disabled = true; btn.textContent = 'Actualizando...';
+  try{
+    let data;
+    if(state.mode === 'demo'){
+      await new Promise(r=>setTimeout(r, 500));
+      data = {
+        saldo: 18450320,
+        transferencias: [
+          { id:1, fecha:'2026-07-27 09:14', monto:1250000, glosa:'Pago factura 88231', origen:'Constructora Los Alerces Ltda.' },
+          { id:2, fecha:'2026-07-27 11:02', monto:430000,  glosa:'Abono parcial', origen:'Comercial Rioblanco SpA' },
+          { id:3, fecha:'2026-07-26 16:40', monto:2100000, glosa:'Transferencia', origen:'Distribuidora Andes S.A.' },
+        ]
+      };
+    } else {
+      const resp = await fetch('/api/transferencias');
+      data = await resp.json();
+      if(!resp.ok) throw new Error(data.error || 'No se pudo consultar Boufin');
+    }
+
+    saldoEl.textContent = fmtCLP(data.saldo);
+    saldoEl.dataset.cargado = '1';
+    const ahora = new Date();
+    metaEl.textContent = 'Actualizado ' + ahora.toLocaleTimeString('es-CL', {hour:'2-digit', minute:'2-digit'});
+
+    if(!data.transferencias.length){
+      tableWrap.innerHTML = `
+        <div class="empty-state">
+          <div class="glyph">&sect;</div>
+          <p>No hay transferencias recibidas registradas.</p>
+        </div>`;
+    } else {
+      const filas = data.transferencias.map(t => `
+        <tr>
+          <td class="mono">${t.fecha}</td>
+          <td>${t.origen}</td>
+          <td>${t.glosa}</td>
+          <td class="num">${fmtCLP(t.monto)}</td>
+        </tr>
+      `).join('');
+      tableWrap.innerHTML = `
+        <table>
+          <thead><tr><th>Fecha</th><th>Origen</th><th>Glosa</th><th>Monto</th></tr></thead>
+          <tbody>${filas}</tbody>
+        </table>`;
+    }
+  } catch(err){
+    mostrarToast('Error: '+err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Actualizar';
+  }
+}
+
+document.getElementById('btn-actualizar-transferencias').addEventListener('click', actualizarTransferencias);
 
 /* Render inicial con datos demo */
 state.documentos = generarDemo('2026-07');

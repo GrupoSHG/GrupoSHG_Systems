@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Registro de Compras y Ventas · Polchile</title>
+<title>&Aacute;rea Finanzas &middot; Polchile</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
@@ -12,12 +12,13 @@
 <div class="sidebar">
   <div class="brand">
     <div class="name">Polchile</div>
-    <div class="tag">Registro SII</div>
+    <div class="tag">&Aacute;rea Finanzas</div>
   </div>
   <div class="navitem active" data-tipo="compra"><span class="dot"></span>Facturas de Compra</div>
   <div class="navitem" data-tipo="venta"><span class="dot"></span>Facturas de Venta</div>
   <div class="navitem" data-tipo="subidas"><span class="dot"></span>Facturas Subidas</div>
-  <div class="foot">SimpleAPI &middot; servicios.simpleapi.cl</div>
+  <div class="navitem" data-tipo="transferencias"><span class="dot"></span>Transferencias</div>
+  <div class="foot">SimpleAPI &middot; Boufin</div>
 </div>
 
 <div class="main">
@@ -74,7 +75,19 @@
 
   <div id="action-bar-slot"></div>
 
-  <footer class="credit">Datos provistos por SimpleAPI (servicios.simpleapi.cl) sobre el Registro de Compras y Ventas del SII &middot; sin almacenamiento de terceros. Carga hacia Manager v&iacute;a api2 (X-Api-Key) &mdash; confirma el business ID y el path exacto en tu instancia.</footer>
+  <div class="transferencias-view" id="transferencias-view" style="display:none;">
+    <div class="saldo-card">
+      <div class="saldo-label">Saldo disponible &middot; Santander</div>
+      <div class="saldo-valor" id="saldo-valor">&mdash;</div>
+      <div class="saldo-meta">
+        <span id="ultima-actualizacion">Sin consultar a&uacute;n</span>
+        <button class="btn secondary" id="btn-actualizar-transferencias">Actualizar</button>
+      </div>
+    </div>
+    <div class="table-wrap" id="transferencias-table-wrap"></div>
+  </div>
+
+  <footer class="credit">Datos provistos por SimpleAPI (servicios.simpleapi.cl) sobre el Registro de Compras y Ventas del SII &middot; sin almacenamiento de terceros. Carga hacia Manager v&iacute;a api2 (X-Api-Key) &mdash; confirma el business ID y el path exacto en tu instancia. Transferencias v&iacute;a Boufin sobre Banco Santander.</footer>
 </div>
 </div>
 

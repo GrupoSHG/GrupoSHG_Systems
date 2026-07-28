@@ -301,3 +301,26 @@
   footer.credit{
     margin-top:30px; font-size:11px; color:var(--ink-soft); text-align:center;
   }
+
+  /* Transferencias (Boufin / Santander) */
+  .saldo-card{
+    background: linear-gradient(135deg, var(--azul-dark) 0%, var(--azul) 100%);
+    color:#fff; border-radius:4px; padding:22px 26px; margin-bottom:20px;
+    box-shadow: 0 4px 16px rgba(10,37,64,0.18);
+  }
+  .saldo-label{
+    font-family:'IBM Plex Mono', monospace; font-size:11px; letter-spacing:.1em;
+    text-transform:uppercase; opacity:.75; margin-bottom:8px;
+  }
+  .saldo-valor{
+    font-family:'Source Serif 4', serif; font-weight:700; font-size:38px; letter-spacing:-0.01em;
+  }
+  .saldo-meta{
+    display:flex; align-items:center; justify-content:space-between;
+    margin-top:14px; padding-top:14px; border-top:1px solid rgba(255,255,255,0.18);
+    font-size:12px; opacity:.85;
+  }
+  .saldo-meta .btn.secondary{
+    border-color:rgba(255,255,255,0.4); color:#fff; padding:7px 14px; font-size:12px;
+  }
+  .saldo-meta .btn.secondary:hover{ border-color:#fff; background:rgba(255,255,255,0.08); }
