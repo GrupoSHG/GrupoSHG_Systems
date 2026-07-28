@@ -12,6 +12,7 @@ pasa por aqui, para que el ApiKey de Manager tampoco viaje al navegador.
 import os
 import re
 import json
+import base64
 import email
 import imaplib
 import xml.etree.ElementTree as ET
@@ -33,7 +34,8 @@ RUT_CERTIFICADO   = os.environ.get("RUT_CERTIFICADO")
 RUT_EMPRESA       = os.environ.get("RUT_EMPRESA")
 PASSWORD_CERT     = os.environ.get("PASSWORD_CERT")
 AMBIENTE          = os.environ.get("AMBIENTE", "1")  # 1=produccion, 0=certificacion
-PFX_PATH          = os.environ.get("PFX_PATH")       # ej. ./secrets/certificado.pfx
+PFX_PATH          = os.environ.get("PFX_PATH", "/tmp/certificado.pfx")
+PFX_BASE64        = os.environ.get("PFX_BASE64")     # alternativa para hosts en la nube (Render/Railway)
 
 MANAGER_DOMAIN      = os.environ.get("MANAGER_DOMAIN")
 MANAGER_BUSINESS_ID = os.environ.get("MANAGER_BUSINESS_ID")
@@ -48,8 +50,18 @@ DTE_MAIL_PASSWORD  = os.environ.get("DTE_MAIL_PASSWORD")  # app password, no la 
 SIMPLEAPI_HOST = "https://servicios.simpleapi.cl"
 
 REQUIRED_VARS = [
-    "SIMPLEAPI_KEY", "RUT_CERTIFICADO", "RUT_EMPRESA", "PASSWORD_CERT", "PFX_PATH",
+    "SIMPLEAPI_KEY", "RUT_CERTIFICADO", "RUT_EMPRESA", "PASSWORD_CERT",
 ]
+
+
+def preparar_certificado():
+    """En hosts en la nube no se puede simplemente 'copiar' el .pfx al
+    filesystem (es efímero y no está en git). Si viene PFX_BASE64, lo
+    decodifica y lo escribe en PFX_PATH al arrancar. Localmente, si ya
+    tienes el archivo en secrets/, esto no hace nada."""
+    if PFX_BASE64 and not os.path.isfile(PFX_PATH):
+        with open(PFX_PATH, "wb") as f:
+            f.write(base64.b64decode(PFX_BASE64))
 
 
 def validar_config():
@@ -351,10 +363,14 @@ def index():
     return send_from_directory(app.static_folder, "index.html")
 
 
+preparar_certificado()
+
 if __name__ == "__main__":
     try:
         validar_config()
     except RuntimeError as e:
         print(f"\n⚠️  Configuración incompleta: {e}")
         print("Copia .env.example a .env y completa tus credenciales.\n")
-    app.run(host="127.0.0.1", port=5000, debug=True)
+    port = int(os.environ.get("PORT", 5000))  # Render/Railway asignan PORT automáticamente
+    debug = os.environ.get("FLASK_DEBUG", "1") == "1"
+    app.run(host="0.0.0.0", port=port, debug=debug)
