@@ -17,7 +17,7 @@
   <div class="navitem active" data-tipo="compra"><span class="dot"></span>Facturas de Compra</div>
   <div class="navitem" data-tipo="venta"><span class="dot"></span>Facturas de Venta</div>
   <div class="navitem" data-tipo="subidas"><span class="dot"></span>Facturas Subidas</div>
-  <div class="foot">SimpleAPI &middot; api.simpleapi.cl</div>
+  <div class="foot">SimpleAPI &middot; servicios.simpleapi.cl</div>
 </div>
 
 <div class="main">
@@ -54,13 +54,27 @@
     </div>
   </div>
 
+  <div class="folio-panel" id="folio-panel">
+    <div class="manager-panel-head">
+      <span class="mp-title">Carga masiva por folio (detalle desde XML)</span>
+    </div>
+    <div class="manager-panel-body">
+      <div class="field">
+        <label for="f-folio">Folio de la factura</label>
+        <input id="f-folio" type="text" placeholder="123456">
+      </div>
+      <button class="btn secondary" id="btn-buscar-folio">Buscar en correo</button>
+    </div>
+    <div id="folio-resultado"></div>
+  </div>
+
   <div class="summary" id="summary"></div>
 
   <div class="table-wrap" id="table-wrap"></div>
 
   <div id="action-bar-slot"></div>
 
-  <footer class="credit">Datos provistos por SimpleAPI (api.simpleapi.cl) sobre el Registro de Compras y Ventas del SII &middot; sin almacenamiento de terceros. Carga hacia Manager v&iacute;a api2 (X-Api-Key) &mdash; confirma el business ID y el path exacto en tu instancia.</footer>
+  <footer class="credit">Datos provistos por SimpleAPI (servicios.simpleapi.cl) sobre el Registro de Compras y Ventas del SII &middot; sin almacenamiento de terceros. Carga hacia Manager v&iacute;a api2 (X-Api-Key) &mdash; confirma el business ID y el path exacto en tu instancia.</footer>
 </div>
 </div>
 

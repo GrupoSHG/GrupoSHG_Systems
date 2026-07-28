@@ -95,7 +95,16 @@ function renderTable(){
       </div>`;
     return;
   }
-  const rows = docs.map(d => `
+  const esCompra = state.tipoActivo === 'compra';
+  const rows = docs.map(d => {
+    let detalleCell = '';
+    if(esCompra){
+      let estadoDetalle = '<span class="detalle-pendiente">buscando&hellip;</span>';
+      if(d.items === null) estadoDetalle = '<span class="detalle-error">sin XML</span>';
+      else if(Array.isArray(d.items)) estadoDetalle = '<span class="detalle-listo">&#10003; listo</span>';
+      detalleCell = `<td><button class="btn-fila-detalle" data-id="${d.id}">Ver detalle</button> ${estadoDetalle}</td>`;
+    }
+    return `
     <tr>
       ${esSubidas ? '' : `<td class="checkbox-cell"><input type="checkbox" data-id="${d.id}" ${state.seleccionados.has(d.id)?'checked':''}></td>`}
       ${esSubidas ? `<td><span class="tipo-badge ${d.origen}">${d.origen === 'compra' ? 'Compra' : 'Venta'}</span></td>` : ''}
@@ -108,8 +117,9 @@ function renderTable(){
       <td class="num">${fmt(d.iva)}</td>
       <td class="num">${fmt(d.total)}</td>
       <td><span class="stamp ${d.estado}">${d.estado}</span></td>
-    </tr>
-  `).join('');
+      ${detalleCell}
+    </tr>`;
+  }).join('');
   wrap.innerHTML = `
     <table>
       <thead>
@@ -117,6 +127,7 @@ function renderTable(){
           ${esSubidas ? '<th>Tipo</th>' : '<th></th>'}
           <th>Folio</th><th>Tipo Doc.</th><th>RUT</th><th>Raz&oacute;n social</th>
           <th>Fecha</th><th>Neto</th><th>IVA</th><th>Total</th><th>Estado</th>
+          ${esCompra ? '<th>Detalle</th>' : ''}
         </tr>
       </thead>
       <tbody>${rows}</tbody>
@@ -128,6 +139,35 @@ function renderTable(){
       if(e.target.checked) state.seleccionados.add(id);
       else state.seleccionados.delete(id);
       renderActionBar();
+    });
+  });
+  wrap.querySelectorAll('.btn-fila-detalle').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const doc = (state.documentos.compra || []).find(d => d.id === btn.dataset.id);
+      if(!doc) return;
+      document.getElementById('f-folio').value = doc.folio;
+      document.getElementById('folio-panel').scrollIntoView({behavior:'smooth', block:'start'});
+      folioActual = doc.folio;
+      proveedorActual = doc.razonSocial;
+      fechaActual = doc.fecha;
+
+      if(Array.isArray(doc.items)){
+        // Ya se trajo autom\u00e1ticamente al consultar el RCV - instant\u00e1neo
+        itemsActuales = doc.items;
+        renderItemsFolio();
+      } else {
+        // No se encontr\u00f3 antes (o a\u00fan est\u00e1 buscando) - reintentar
+        btn.disabled = true; btn.textContent = 'Buscando...';
+        try{
+          doc.items = await obtenerItemsFactura(doc);
+          itemsActuales = doc.items;
+          renderItemsFolio();
+        } catch(err){
+          mostrarToast('No se encontr\u00f3 el XML para este folio: '+err.message);
+        } finally {
+          btn.disabled = false; btn.textContent = 'Ver detalle';
+        }
+      }
     });
   });
 }
@@ -235,6 +275,7 @@ document.querySelectorAll('.navitem').forEach(item=>{
     document.querySelector('.config').style.display = esSubidas ? 'none' : 'flex';
     document.getElementById('notice').style.display = esSubidas ? 'none' : 'block';
     document.querySelector('.manager-panel').style.display = esSubidas ? 'none' : 'block';
+    document.getElementById('folio-panel').style.display = state.tipoActivo === 'compra' ? 'block' : 'none';
     renderAll();
   });
 });
@@ -266,6 +307,21 @@ document.getElementById('btn-consultar').addEventListener('click', async ()=>{
       state.documentos = await consultarRCV(periodo);
     }
     renderAll();
+
+    // Trae autom\u00e1ticamente el detalle (\u00edtems) de cada factura de compra,
+    // buscando el XML en el correo por folio, para que "Ver detalle" quede
+    // instant\u00e1neo y solo falte llenar c\u00f3digo/cuenta contable.
+    const compras = state.documentos.compra || [];
+    for(let i=0; i<compras.length; i++){
+      const doc = compras[i];
+      btn.textContent = `Trayendo detalle ${i+1}/${compras.length}...`;
+      try{
+        doc.items = await obtenerItemsFactura(doc);
+      } catch(err){
+        doc.items = null; // no se encontr\u00f3 o fall\u00f3 - se puede reintentar con "Ver detalle"
+      }
+      if(state.tipoActivo === 'compra') renderTable(); // refleja el avance en vivo
+    }
   } catch(err){
     mostrarToast('Error: '+err.message);
   } finally {
@@ -280,6 +336,196 @@ fetch('/api/manager/status').then(r=>r.json()).then(data=>{
   el.textContent = data.configurado ? 'configurado' : 'sin configurar';
   el.classList.toggle('ok', data.configurado);
 }).catch(()=>{});
+
+/* ---------------------------------------------------------
+   Carga masiva por folio: buscar en correo -> items del XML ->
+   finanzas asigna c\u00f3digo -> cuenta contable se autocompleta
+--------------------------------------------------------- */
+let folioActual = null;
+let proveedorActual = '';
+let fechaActual = '';
+let itemsActuales = [];
+
+function fmtN(n){ return Number(n||0).toLocaleString('es-CL'); }
+
+/* Trae los \u00edtems de una factura puntual (por folio), sea en Demo o real.
+   La usan tanto el prefetch autom\u00e1tico como el bot\u00f3n "Ver detalle". */
+async function obtenerItemsFactura(doc){
+  if(state.mode === 'demo'){
+    await new Promise(r=>setTimeout(r, 150 + Math.random()*250));
+    // ~85% de las facturas demo "encuentran" el XML, para simular casos sin correo
+    if(Math.random() < 0.15) return null;
+    const catalogo = [
+      { descripcion:'Panel PurP 50mm', precioUnitario:18500 },
+      { descripcion:'Perfil U galvanizado', precioUnitario:6200 },
+      { descripcion:'Tornillo autoperforante', precioUnitario:35 },
+      { descripcion:'Sellador poliuretano', precioUnitario:4200 },
+      { descripcion:'Plancha ZA prepintada', precioUnitario:12900 },
+    ];
+    const n = 1 + Math.floor(Math.random()*3);
+    return Array.from({length:n}, (_, i) => {
+      const base = catalogo[Math.floor(Math.random()*catalogo.length)];
+      const cantidad = 1 + Math.floor(Math.random()*30);
+      return {
+        id:`item-${doc.id}-${i}`, descripcion:base.descripcion, cantidad,
+        precioUnitario:base.precioUnitario, monto:cantidad*base.precioUnitario,
+        codigo:'', cuentaContable:''
+      };
+    });
+  }
+  const resp = await fetch(`/api/dte/folio/${encodeURIComponent(doc.folio)}`);
+  const data = await resp.json();
+  if(!resp.ok) throw new Error(data.error || 'No se encontró la factura');
+  return data.items;
+}
+
+document.getElementById('btn-buscar-folio').addEventListener('click', ()=>{
+  const folio = document.getElementById('f-folio').value.trim();
+  if(!folio){ mostrarToast('Ingresa un folio.'); return; }
+  buscarFolio(folio, '', '');
+});
+
+async function buscarFolio(folio, proveedor, fecha){
+  const resultDiv = document.getElementById('folio-resultado');
+  const btn = document.getElementById('btn-buscar-folio');
+  btn.disabled = true; btn.textContent = 'Buscando...';
+  resultDiv.innerHTML = '';
+  proveedorActual = proveedor || '';
+  fechaActual = fecha || '';
+
+  try{
+    const items = await obtenerItemsFactura({ id:'manual-'+folio, folio });
+    if(!items) throw new Error(`No se encontró el XML del folio ${folio} en la casilla DTE`);
+    folioActual = folio;
+    itemsActuales = items;
+    renderItemsFolio();
+  } catch(err){
+    mostrarToast('Error: '+err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Buscar en correo';
+  }
+}
+
+function renderItemsFolio(){
+  const resultDiv = document.getElementById('folio-resultado');
+  if(!itemsActuales.length){
+    resultDiv.innerHTML = '<p style="font-size:12.5px;color:var(--ink-soft);">No se encontraron ítems para este folio.</p>';
+    return;
+  }
+  const filas = itemsActuales.map(it => `
+    <tr data-id="${it.id}">
+      <td>${it.descripcion}</td>
+      <td class="num">${it.cantidad}</td>
+      <td class="num">${fmtN(it.precioUnitario)}</td>
+      <td class="num">${fmtN(it.monto)}</td>
+      <td><input type="text" class="input-codigo" data-id="${it.id}" placeholder="Código" value="${it.codigo||''}"></td>
+      <td><input type="text" class="input-cuenta ${it.cuentaContable ? 'cuenta-ok' : ''}" data-id="${it.id}" placeholder="Cuenta contable" value="${it.cuentaContable||''}"></td>
+    </tr>
+  `).join('');
+
+  resultDiv.innerHTML = `
+    <table class="items-table">
+      <thead>
+        <tr>
+          <th>Descripci\u00f3n</th><th>Cant.</th><th>Precio Unit.</th><th>Monto</th>
+          <th>C\u00f3digo</th><th>Cuenta Contable</th>
+        </tr>
+      </thead>
+      <tbody>${filas}</tbody>
+    </table>
+    <div class="items-foot">
+      <span style="font-size:12px;color:var(--ink-soft);">Folio <b>${folioActual}</b> &middot; ${itemsActuales.length} \u00edtem(s)</span>
+      <button class="btn" id="btn-cargar-detalle">Cargar detalle a Manager</button>
+    </div>
+  `;
+
+  resultDiv.querySelectorAll('.input-codigo').forEach(inp=>{
+    inp.addEventListener('change', async (e)=>{
+      const id = e.target.dataset.id;
+      const item = itemsActuales.find(i=>i.id===id);
+      item.codigo = e.target.value.trim();
+      const cuentaInput = resultDiv.querySelector(`.input-cuenta[data-id="${id}"]`);
+      if(!item.codigo){ return; }
+      cuentaInput.value = 'Buscando...';
+      try{
+        let cuenta;
+        if(state.mode === 'demo'){
+          await new Promise(r=>setTimeout(r, 250));
+          cuenta = '5-1-' + item.codigo.slice(-3).padStart(3,'0');
+        } else {
+          const resp = await fetch(`/api/cuenta-contable/${encodeURIComponent(item.codigo)}`);
+          const data = await resp.json();
+          cuenta = data.encontrado ? data.cuenta : null;
+        }
+        if(cuenta){
+          item.cuentaContable = cuenta;
+          cuentaInput.value = cuenta;
+          cuentaInput.classList.add('cuenta-ok');
+          cuentaInput.classList.remove('cuenta-pendiente');
+        } else {
+          item.cuentaContable = '';
+          cuentaInput.value = '';
+          cuentaInput.placeholder = 'No encontrada — ingrésala';
+          cuentaInput.classList.add('cuenta-pendiente');
+          cuentaInput.classList.remove('cuenta-ok');
+        }
+      } catch(err){
+        cuentaInput.value = '';
+        mostrarToast('No se pudo buscar la cuenta contable: '+err.message);
+      }
+    });
+  });
+
+  resultDiv.querySelectorAll('.input-cuenta').forEach(inp=>{
+    inp.addEventListener('change', (e)=>{
+      const id = e.target.dataset.id;
+      const item = itemsActuales.find(i=>i.id===id);
+      item.cuentaContable = e.target.value.trim();
+      e.target.classList.toggle('cuenta-ok', !!item.cuentaContable);
+      e.target.classList.toggle('cuenta-pendiente', !item.cuentaContable);
+    });
+  });
+
+  document.getElementById('btn-cargar-detalle').addEventListener('click', cargarDetalleAManager);
+}
+
+async function cargarDetalleAManager(){
+  const faltantes = itemsActuales.filter(it => !it.codigo || !it.cuentaContable);
+  if(faltantes.length){
+    mostrarToast(`Falta código o cuenta contable en ${faltantes.length} ítem(s).`);
+    return;
+  }
+  const btn = document.getElementById('btn-cargar-detalle');
+  btn.disabled = true; btn.textContent = 'Cargando...';
+
+  try{
+    if(state.mode === 'demo'){
+      await new Promise(r=>setTimeout(r, 500));
+      mostrarToast(`(Demo) Folio ${folioActual}: ${itemsActuales.length} ítem(s) listos para Manager.`);
+    } else {
+      const resp = await fetch('/api/manager/upload-detalle', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify({
+          folio: folioActual,
+          proveedor: proveedorActual,
+          fecha: fechaActual || (document.getElementById('f-periodo').value + '-01'),
+          items: itemsActuales
+        })
+      });
+      const data = await resp.json();
+      if(!resp.ok || !data.ok) throw new Error(data.error || 'Manager rechazó la carga');
+      mostrarToast(`Folio ${folioActual} cargado a Manager con ${itemsActuales.length} ítem(s).`);
+    }
+    document.getElementById('folio-resultado').innerHTML = '';
+    document.getElementById('f-folio').value = '';
+    itemsActuales = []; folioActual = null; proveedorActual = ''; fechaActual = '';
+  } catch(err){
+    mostrarToast('Error: '+err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Cargar detalle a Manager';
+  }
+}
 
 /* Render inicial con datos demo */
 state.documentos = generarDemo('2026-07');

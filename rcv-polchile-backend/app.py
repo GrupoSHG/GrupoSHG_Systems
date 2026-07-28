@@ -10,7 +10,11 @@ periodo y recibe el resultado ya consultado. La carga a Manager tambien
 pasa por aqui, para que el ApiKey de Manager tampoco viaje al navegador.
 """
 import os
+import re
 import json
+import email
+import imaplib
+import xml.etree.ElementTree as ET
 import requests
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
@@ -34,6 +38,12 @@ PFX_PATH          = os.environ.get("PFX_PATH")       # ej. ./secrets/certificado
 MANAGER_DOMAIN      = os.environ.get("MANAGER_DOMAIN")
 MANAGER_BUSINESS_ID = os.environ.get("MANAGER_BUSINESS_ID")
 MANAGER_APIKEY      = os.environ.get("MANAGER_APIKEY")
+
+# Casilla dedicada que solo recibe XML de DTE
+DTE_MAIL_IMAP_HOST = os.environ.get("DTE_MAIL_IMAP_HOST", "imap.gmail.com")
+DTE_MAIL_IMAP_PORT = int(os.environ.get("DTE_MAIL_IMAP_PORT", "993"))
+DTE_MAIL_USER      = os.environ.get("DTE_MAIL_USER")
+DTE_MAIL_PASSWORD  = os.environ.get("DTE_MAIL_PASSWORD")  # app password, no la clave normal
 
 SIMPLEAPI_HOST = "https://servicios.simpleapi.cl"
 
@@ -127,6 +137,112 @@ def api_rcv():
 
 
 # ---------------------------------------------------------------
+# Correo DTE - buscar la factura por folio y extraer sus items del XML
+# ---------------------------------------------------------------
+def buscar_xml_por_folio(folio):
+    """Busca en la casilla dedicada a DTE un correo que mencione el folio
+    y trae el primer adjunto .xml. Requiere DTE_MAIL_USER/PASSWORD (app
+    password de Gmail, no la clave normal) en .env."""
+    if not (DTE_MAIL_USER and DTE_MAIL_PASSWORD):
+        raise RuntimeError("Falta configurar DTE_MAIL_USER / DTE_MAIL_PASSWORD en .env")
+
+    imap = imaplib.IMAP4_SSL(DTE_MAIL_IMAP_HOST, DTE_MAIL_IMAP_PORT)
+    try:
+        imap.login(DTE_MAIL_USER, DTE_MAIL_PASSWORD)
+        imap.select("INBOX")
+        # Busca el folio en el asunto. Si tus correos DTE no traen el folio
+        # en el asunto, ajusta este criterio (ej. buscar en el cuerpo).
+        status, ids = imap.search(None, f'(SUBJECT "{folio}")')
+        if status != "OK" or not ids[0]:
+            return None
+        # Se toma el correo más reciente que calce
+        ultimo_id = ids[0].split()[-1]
+        status, msg_data = imap.fetch(ultimo_id, "(RFC822)")
+        if status != "OK":
+            return None
+        msg = email.message_from_bytes(msg_data[0][1])
+        for parte in msg.walk():
+            nombre = parte.get_filename()
+            if nombre and nombre.lower().endswith(".xml"):
+                return parte.get_payload(decode=True)
+        return None
+    finally:
+        imap.logout()
+
+
+def parsear_items_dte(xml_bytes):
+    """Extrae los items (Detalle) de un XML de DTE del SII."""
+    root = ET.fromstring(xml_bytes)
+    # El XML del SII suele traer namespace; se ignora buscando por sufijo de tag
+    items = []
+    for i, det in enumerate([el for el in root.iter() if el.tag.split('}')[-1] == 'Detalle']):
+        def campo(nombre):
+            el = next((c for c in det if c.tag.split('}')[-1] == nombre), None)
+            return el.text if el is not None else None
+
+        items.append({
+            "id": f"item-{i}",
+            "descripcion": campo("NmbItem") or "",
+            "cantidad": float(campo("QtyItem") or 1),
+            "precioUnitario": float(campo("PrcItem") or 0),
+            "monto": float(campo("MontoItem") or 0),
+            "codigo": "",
+            "cuentaContable": "",
+        })
+    return items
+
+
+@app.route("/api/dte/folio/<folio>")
+def api_dte_folio(folio):
+    try:
+        xml_bytes = buscar_xml_por_folio(folio)
+    except RuntimeError as e:
+        return jsonify({"error": str(e)}), 500
+    except imaplib.IMAP4.error as e:
+        return jsonify({"error": f"No se pudo conectar al correo: {e}"}), 502
+
+    if xml_bytes is None:
+        return jsonify({"error": f"No se encontró el XML del folio {folio} en la casilla DTE"}), 404
+
+    try:
+        items = parsear_items_dte(xml_bytes)
+    except ET.ParseError as e:
+        return jsonify({"error": f"El XML encontrado no se pudo leer: {e}"}), 500
+
+    return jsonify({"folio": folio, "items": items})
+
+
+# ---------------------------------------------------------------
+# Cuenta contable - lookup por código
+# TODO: esto asume que el mapeo código -> cuenta contable vive en Manager.
+# Ajustar consultar_cuenta_contable() para que apunte a la fuente real
+# (tabla SQL de Manager, como ya hacen las consultas en BackupManager,
+# o un endpoint de Manager si expone el plan de cuentas via api2).
+# ---------------------------------------------------------------
+def consultar_cuenta_contable(codigo):
+    """Placeholder: reemplazar por la consulta real al mapeo código->cuenta.
+    Devuelve None si no encuentra el código."""
+    # Ejemplo de como se vería con pyodbc contra Manager (mismo patrón que
+    # BackupManager), una vez confirmada la tabla/columnas reales:
+    #
+    # import pyodbc
+    # conn = pyodbc.connect(MANAGER_SQL_CONNECTION_STRING)
+    # cur = conn.cursor()
+    # cur.execute("SELECT CuentaContable FROM TablaMapeoCodigos WHERE Codigo = ?", codigo)
+    # row = cur.fetchone()
+    # return row[0] if row else None
+    return None
+
+
+@app.route("/api/cuenta-contable/<codigo>")
+def api_cuenta_contable(codigo):
+    cuenta = consultar_cuenta_contable(codigo)
+    if cuenta is None:
+        return jsonify({"encontrado": False, "cuenta": None}), 404
+    return jsonify({"encontrado": True, "cuenta": cuenta})
+
+
+# ---------------------------------------------------------------
 # Manager ERP (api2) - carga de facturas
 # ---------------------------------------------------------------
 def mapear_a_manager(doc, tipo):
@@ -178,6 +294,53 @@ def api_manager_upload():
 def api_manager_status():
     configurado = bool(MANAGER_DOMAIN and MANAGER_BUSINESS_ID and MANAGER_APIKEY)
     return jsonify({"configurado": configurado})
+
+
+def mapear_detalle_a_manager(folio, proveedor, fecha, items):
+    """Arma el payload de Manager con el detalle real de items (uno por
+    linea), cada uno con su cuenta contable asignada por finanzas."""
+    return {
+        "issueDate": fecha,
+        "reference": str(folio),
+        "supplier": proveedor,
+        "Lines": [{
+            "lineDescription": it.get("descripcion"),
+            "qty": it.get("cantidad", 1),
+            "UnitPrice": {"value": it.get("precioUnitario"), "currency": ""},
+            "code": it.get("codigo"),
+            "account": it.get("cuentaContable"),
+        } for it in items],
+    }
+
+
+@app.route("/api/manager/upload-detalle", methods=["POST"])
+def api_manager_upload_detalle():
+    if not (MANAGER_DOMAIN and MANAGER_BUSINESS_ID and MANAGER_APIKEY):
+        return jsonify({"error": "Conexión a Manager no configurada en .env"}), 500
+
+    body = request.get_json(force=True)
+    folio = body.get("folio")
+    proveedor = body.get("proveedor")
+    fecha = body.get("fecha")
+    items = body.get("items", [])
+
+    sin_codigo = [it for it in items if not it.get("codigo") or not it.get("cuentaContable")]
+    if sin_codigo:
+        return jsonify({
+            "error": f"{len(sin_codigo)} ítem(s) sin código o cuenta contable asignada",
+        }), 400
+
+    url = f"{MANAGER_DOMAIN.rstrip('/')}/api2/{MANAGER_BUSINESS_ID}/purchase-invoice-form"
+    try:
+        resp = requests.post(
+            url,
+            headers={"X-Api-Key": MANAGER_APIKEY, "Content-Type": "application/json"},
+            json=mapear_detalle_a_manager(folio, proveedor, fecha, items),
+            timeout=30,
+        )
+        return jsonify({"ok": resp.ok, "status": resp.status_code}), (200 if resp.ok else 502)
+    except requests.RequestException as e:
+        return jsonify({"ok": False, "error": str(e)}), 502
 
 
 # ---------------------------------------------------------------
