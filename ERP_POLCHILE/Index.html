@@ -28,7 +28,6 @@
     color: #1c2333;
   }
 
-  /* ---------- LOGIN ---------- */
   #login-screen {
     min-height: 100vh;
     display: flex;
@@ -104,7 +103,6 @@
     min-height: 16px;
   }
 
-  /* ---------- APP ---------- */
   #app { display: none; }
 
   header.topbar {
@@ -258,11 +256,47 @@
   }
 
   @media (max-width: 700px) {
-    .kpis { grid-template-columns: 1fr; }
+    .kpis { grid-template-columns: 1fr !important; }
     main { padding: 20px 14px 40px; }
     header.topbar { padding: 14px 18px; }
     th:nth-child(3), td:nth-child(3) { display: none; }
   }
+
+  .tabs-bodega {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 14px 20px 0 20px;
+  }
+  .tab-bodega {
+    padding: 6px 14px;
+    background: #f6f8fc;
+    border: 1px solid var(--gris-borde);
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--texto-suave);
+  }
+  .tab-bodega.active {
+    background: var(--azul-oscuro);
+    color: white;
+    border-color: var(--azul-oscuro);
+  }
+  .buscador-stock {
+    margin: 14px 20px 0 20px;
+    padding: 9px 14px;
+    border: 1px solid var(--gris-borde);
+    border-radius: 6px;
+    font-size: 13.5px;
+    width: calc(100% - 40px);
+  }
+  .buscador-stock:focus {
+    outline: 2px solid var(--azul-acento);
+    outline-offset: 1px;
+    border-color: transparent;
+  }
+  .stock-bajo { color: #c0362c; font-weight: 700; }
 </style>
 </head>
 <body>
@@ -293,7 +327,7 @@
   </header>
 
   <main>
-    <div class="kpis">
+    <div class="kpis" style="grid-template-columns: repeat(5, 1fr);">
       <div class="kpi">
         <div class="etiqueta">NVs pendientes</div>
         <div class="valor" id="kpi-total">—</div>
@@ -305,6 +339,16 @@
       <div class="kpi">
         <div class="etiqueta">Monto pendiente</div>
         <div class="valor" id="kpi-monto">—</div>
+      </div>
+      <div class="kpi">
+        <div class="etiqueta">Facturación del período</div>
+        <div class="valor" id="kpi-facturacion">—</div>
+        <div style="font-size:11px; color:var(--texto-suave); margin-top:2px;" id="kpi-facturacion-rango"></div>
+      </div>
+      <div class="kpi">
+        <div class="etiqueta">Facturación acumulada (año)</div>
+        <div class="valor" id="kpi-facturacion-anual">—</div>
+        <div style="font-size:11px; color:var(--texto-suave); margin-top:2px;" id="kpi-facturacion-anual-txt"></div>
       </div>
     </div>
 
@@ -327,13 +371,69 @@
       </table>
       <div id="tabla-vacio" class="vacio" style="display:none;">No hay notas de venta pendientes en este momento.</div>
     </div>
+
+    <div class="panel" style="margin-top:24px;">
+      <div class="panel-header">
+        <h2>Stock de Productos</h2>
+      </div>
+      <div class="tabs-bodega" id="tabs-bodega"></div>
+      <input class="buscador-stock" id="buscador-stock" type="text" placeholder="Buscar por código o nombre...">
+      <table style="margin-top:14px;">
+        <thead>
+          <tr>
+            <th>Código</th>
+            <th>Nombre</th>
+            <th>Bodega</th>
+            <th>Unidad</th>
+            <th>Stock físico</th>
+          </tr>
+        </thead>
+        <tbody id="tabla-stock-body"></tbody>
+      </table>
+      <div id="stock-vacio" class="vacio" style="display:none;">Sin resultados.</div>
+    </div>
+
+    <div class="panel" style="margin-top:24px;">
+      <div class="panel-header">
+        <h2 id="titulo-facturacion-periodo">Facturación por Vendedor — Período Vigente</h2>
+        <span id="rango-periodo-txt" style="font-size:12px; color:var(--texto-suave);"></span>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Vendedor</th>
+            <th>Total facturado</th>
+          </tr>
+        </thead>
+        <tbody id="tabla-facturacion-body"></tbody>
+      </table>
+      <div id="facturacion-vacio" class="vacio" style="display:none;">Sin datos de facturación para el período vigente.</div>
+    </div>
+
+    <div class="panel" style="margin-top:24px;">
+      <div class="panel-header">
+        <h2 id="titulo-facturacion-anual">Facturación por Vendedor — Año en Curso</h2>
+        <span id="anio-actual-txt" style="font-size:12px; color:var(--texto-suave);"></span>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Vendedor</th>
+            <th>N° períodos facturados</th>
+            <th>Total facturado (año)</th>
+          </tr>
+        </thead>
+        <tbody id="tabla-facturacion-anual-body"></tbody>
+      </table>
+      <div id="facturacion-anual-vacio" class="vacio" style="display:none;">Sin datos de facturación para el año en curso.</div>
+    </div>
   </main>
 </div>
 
 <script>
   const SUPABASE_URL = "https://hauricnpsamnwyhondse.supabase.co";
   const SUPABASE_ANON_KEY = "sb_publishable_JdCZQMZNHyLixuDDmtTdlA_rj_8rsgG";
-  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
   const $ = (id) => document.getElementById(id);
 
@@ -355,7 +455,7 @@
       $("login-error").textContent = "Ingresa tu correo y contraseña.";
       return;
     }
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { error } = await sb.auth.signInWithPassword({ email, password });
     if (error) {
       $("login-error").textContent = "No pudimos iniciar sesión. Revisa tus datos.";
       return;
@@ -364,15 +464,15 @@
   }
 
   async function logout() {
-    await supabase.auth.signOut();
+    await sb.auth.signOut();
     location.reload();
   }
 
   async function cargarDatos() {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await sb.auth.getUser();
     $("nombre-usuario").textContent = user?.email ?? "";
 
-    const { data: nvs, error } = await supabase
+    const { data: nvs, error } = await sb
       .from("notas_venta_pendientes")
       .select("*, vendedores(nombre)")
       .order("porcentaje_avance", { ascending: true });
@@ -427,10 +527,194 @@
     }).join("");
   }
 
+
+  let stockCompleto = [];
+  let bodegaActiva = "Todas";
+  let rolActual = "vendedor";
+
+  async function obtenerRol() {
+    const { data: { user } } = await sb.auth.getUser();
+    if (!user) return "vendedor";
+    const { data, error } = await sb
+      .from("perfiles")
+      .select("rol")
+      .eq("user_id", user.id)
+      .single();
+    return error || !data ? "vendedor" : (data.rol || "vendedor");
+  }
+
+  async function cargarStock() {
+    const { data, error } = await sb
+      .from("productos_stock")
+      .select("codigo, nombre, bodega_nombre, unidmed, stk_fisico")
+      .order("nombre", { ascending: true });
+
+    if (error) {
+      console.error(error);
+      return;
+    }
+    stockCompleto = data || [];
+    construirTabsBodega();
+    renderStock();
+  }
+
+  function construirTabsBodega() {
+    const bodegas = [...new Set(stockCompleto.map(p => p.bodega_nombre || "Sin bodega"))].sort();
+    const cont = $("tabs-bodega");
+    cont.innerHTML = ["Todas", ...bodegas].map(b => `
+      <div class="tab-bodega ${b === bodegaActiva ? "active" : ""}" data-bodega="${b}">${b}</div>
+    `).join("");
+    cont.querySelectorAll(".tab-bodega").forEach(tab => {
+      tab.addEventListener("click", () => {
+        bodegaActiva = tab.dataset.bodega;
+        construirTabsBodega();
+        renderStock();
+      });
+    });
+  }
+
+  function renderStock() {
+    const term = $("buscador-stock").value.toLowerCase();
+    let filas = stockCompleto;
+
+    if (bodegaActiva !== "Todas") {
+      filas = filas.filter(p => (p.bodega_nombre || "Sin bodega") === bodegaActiva);
+    }
+    if (term) {
+      filas = filas.filter(p =>
+        (p.codigo || "").toLowerCase().includes(term) ||
+        (p.nombre || "").toLowerCase().includes(term)
+      );
+    }
+
+    const tbody = $("tabla-stock-body");
+    const vacio = $("stock-vacio");
+
+    if (!filas.length) {
+      tbody.innerHTML = "";
+      vacio.style.display = "block";
+      return;
+    }
+    vacio.style.display = "none";
+
+    tbody.innerHTML = filas.map(p => {
+      const stk = Number(p.stk_fisico || 0);
+      const claseStk = stk <= 0 ? "stock-bajo" : "";
+      return `
+        <tr>
+          <td>${p.codigo ?? ""}</td>
+          <td>${p.nombre ?? ""}</td>
+          <td>${p.bodega_nombre ?? "Sin bodega"}</td>
+          <td>${p.unidmed ?? ""}</td>
+          <td class="${claseStk}">${stk.toLocaleString("es-CL")}</td>
+        </tr>
+      `;
+    }).join("");
+  }
+
+  $("buscador-stock").addEventListener("input", renderStock);
+
+
+  function formatoFechaCorta(iso) {
+    if (!iso) return "";
+    const [y, m, d] = iso.split("-");
+    return `${d}/${m}/${y}`;
+  }
+
+  async function cargarFacturacion() {
+    if (rolActual !== "admin") {
+      $("titulo-facturacion-periodo").textContent = "Mi Facturación — Período Vigente";
+      $("titulo-facturacion-anual").textContent = "Mi Facturación — Año en Curso";
+    }
+
+    const { data, error } = await sb
+      .from("facturacion_periodo")
+      .select("*, vendedores(nombre)")
+      .order("periodo_inicio", { ascending: false });
+
+    const kpiEl = $("kpi-facturacion");
+    const kpiRango = $("kpi-facturacion-rango");
+    const tbody = $("tabla-facturacion-body");
+    const vacio = $("facturacion-vacio");
+    const rangoTxt = $("rango-periodo-txt");
+
+    if (error || !data || data.length === 0) {
+      kpiEl.textContent = formatoCLP(0);
+      kpiRango.textContent = "";
+      tbody.innerHTML = "";
+      vacio.style.display = "block";
+      rangoTxt.textContent = "";
+      return;
+    }
+
+    // El período vigente es el periodo_inicio más reciente presente en los datos
+    const periodoVigente = data[0].periodo_inicio;
+    const filasPeriodo = data.filter(f => f.periodo_inicio === periodoVigente);
+
+    const totalPeriodo = filasPeriodo.reduce((s, f) => s + Number(f.total_facturado || 0), 0);
+    kpiEl.textContent = formatoCLP(totalPeriodo);
+
+    const rango = `${formatoFechaCorta(filasPeriodo[0].periodo_inicio)} – ${formatoFechaCorta(filasPeriodo[0].periodo_fin)}`;
+    kpiRango.textContent = rango;
+    rangoTxt.textContent = rango;
+
+    vacio.style.display = "none";
+    tbody.innerHTML = filasPeriodo
+      .sort((a, b) => Number(b.total_facturado || 0) - Number(a.total_facturado || 0))
+      .map(f => `
+        <tr>
+          <td>${f.vendedores?.nombre ?? f.codvend}</td>
+          <td style="font-weight:600;">${formatoCLP(f.total_facturado)}</td>
+        </tr>
+      `).join("");
+
+    // ── Acumulado del año en curso (todos los períodos cuyo periodo_inicio cae en este año) ──
+    const anioActual = new Date().getFullYear();
+    const filasAnio = data.filter(f => new Date(f.periodo_inicio + "T00:00:00").getFullYear() === anioActual);
+
+    const totalAnio = filasAnio.reduce((s, f) => s + Number(f.total_facturado || 0), 0);
+    $("kpi-facturacion-anual").textContent = formatoCLP(totalAnio);
+    $("kpi-facturacion-anual-txt").textContent = `Año ${anioActual}`;
+    $("anio-actual-txt").textContent = `Año ${anioActual}`;
+
+    const tbodyAnual = $("tabla-facturacion-anual-body");
+    const vacioAnual = $("facturacion-anual-vacio");
+
+    if (!filasAnio.length) {
+      tbodyAnual.innerHTML = "";
+      vacioAnual.style.display = "block";
+      return;
+    }
+    vacioAnual.style.display = "none";
+
+    const porVendedorAnio = {};
+    filasAnio.forEach(f => {
+      const key = f.codvend;
+      if (!porVendedorAnio[key]) {
+        porVendedorAnio[key] = { nombre: f.vendedores?.nombre ?? f.codvend, total: 0, periodos: 0 };
+      }
+      porVendedorAnio[key].total += Number(f.total_facturado || 0);
+      porVendedorAnio[key].periodos += 1;
+    });
+
+    tbodyAnual.innerHTML = Object.values(porVendedorAnio)
+      .sort((a, b) => b.total - a.total)
+      .map(v => `
+        <tr>
+          <td>${v.nombre}</td>
+          <td>${v.periodos}</td>
+          <td style="font-weight:600;">${formatoCLP(v.total)}</td>
+        </tr>
+      `).join("");
+  }
+
   async function mostrarApp() {
     $("login-screen").style.display = "none";
     $("app").style.display = "block";
+    rolActual = await obtenerRol();
     await cargarDatos();
+    await cargarStock();
+    await cargarFacturacion();
   }
 
   $("btn-login").addEventListener("click", login);
@@ -438,7 +722,7 @@
   $("logout").addEventListener("click", logout);
 
   (async () => {
-    const { data: { session } } = await supabase.auth.getSession();
+    const { data: { session } } = await sb.auth.getSession();
     if (session) await mostrarApp();
   })();
 </script>
