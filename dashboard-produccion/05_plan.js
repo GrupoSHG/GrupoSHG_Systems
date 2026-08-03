@@ -19,20 +19,29 @@ function getPlanPrensas() {
     const filas = supabaseSelect_('ordenes_de_produccion');
     if (!filas.length) return { error: "Sin datos en ordenes_de_produccion" };
 
-    // Mapa NV -> observaciones de la PRIMERA OP PSA de esa misma NV.
-    // Sirve de respaldo cuando la OP PA no trae medidas parseables en
-    // sus propias observaciones (común cuando el texto solo referencia
-    // la Nota de Venta, ej. "Según Nota de Venta N° 14022 de...").
-    // Las filas ya vienen ordenadas por NOTA_VTA, NUM_OP (ORDER BY de la
-    // consulta SQL), así que la primera que se encuentre por NV es la
-    // "primera PSA" en el sentido correcto.
-    const psaObsPorNV = {};
+    // Mapa NUM_OP (de la PA) -> observaciones de SU PSA hermana.
+    // El emparejamiento correcto NO es "la primera PSA de toda la NV" —
+    // una misma NV puede tener varias líneas de producto distintas (ej.
+    // una en "Ban" y otra en "PC4"), cada una con su propia PA y su propia
+    // PSA. El vínculo real es de ADYACENCIA: la PSA que corresponde a una
+    // PA es la que aparece INMEDIATAMENTE DESPUÉS en el orden de NUM_OP
+    // dentro de la misma NV (las filas ya vienen ordenadas así por el
+    // ORDER BY de la consulta SQL).
+    const psaObsPorNumOp = {};
+    let candidatoPA = null; // { nv, numOp } — última PA vista sin PSA asignada aún
     filas.forEach(function(r) {
-      const cod = r.codigo_producto ? r.codigo_producto.toString().toUpperCase() : "";
-      if (cod.indexOf("PSA") === -1) return;
+      const cod   = r.codigo_producto ? r.codigo_producto.toString().toUpperCase() : "";
       const nvKey = r.nota_vta ? r.nota_vta.toString() : "";
-      if (!nvKey || nvKey === "0") return;
-      if (!(nvKey in psaObsPorNV)) psaObsPorNV[nvKey] = r.observaciones || "";
+      const numOpKey = r.num_op ? r.num_op.toString() : "";
+      const esPA  = cod.indexOf("PA") > -1 && cod.indexOf("PSA") === -1;
+      const esPSA = cod.indexOf("PSA") > -1;
+
+      if (esPA) {
+        candidatoPA = { nv: nvKey, numOp: numOpKey };
+      } else if (esPSA && candidatoPA && candidatoPA.nv === nvKey
+                 && !(candidatoPA.numOp in psaObsPorNumOp)) {
+        psaObsPorNumOp[candidatoPA.numOp] = r.observaciones || "";
+      }
     });
 
     const OPS = [];
@@ -72,8 +81,9 @@ function getPlanPrensas() {
       const mlDesdeObs    = mlObs !== null;
       let   mlDesdePSA    = false;
 
-      if (mlObs === null && nvRaw && nvRaw !== "0") {
-        const obsPSA = psaObsPorNV[nvRaw];
+      const numOpRaw = r.num_op ? r.num_op.toString() : "";
+      if (mlObs === null && numOpRaw) {
+        const obsPSA = psaObsPorNumOp[numOpRaw];
         if (obsPSA) {
           const mlPSA = parsearMedidasObservaciones_(obsPSA);
           if (mlPSA !== null) {
