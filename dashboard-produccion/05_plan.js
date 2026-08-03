@@ -19,29 +19,85 @@ function getPlanPrensas() {
     const filas = supabaseSelect_('ordenes_de_produccion');
     if (!filas.length) return { error: "Sin datos en ordenes_de_produccion" };
 
-    // Mapa NUM_OP (de la PA) -> observaciones de SU PSA hermana.
-    // El emparejamiento correcto NO es "la primera PSA de toda la NV" —
-    // una misma NV puede tener varias líneas de producto distintas (ej.
-    // una en "Ban" y otra en "PC4"), cada una con su propia PA y su propia
-    // PSA. El vínculo real es de ADYACENCIA: la PSA que corresponde a una
-    // PA es la que aparece INMEDIATAMENTE DESPUÉS en el orden de NUM_OP
-    // dentro de la misma NV (las filas ya vienen ordenadas así por el
-    // ORDER BY de la consulta SQL).
-    const psaObsPorNumOp = {};
-    let candidatoPA = null; // { nv, numOp } — última PA vista sin PSA asignada aún
-    filas.forEach(function(r) {
-      const cod   = r.codigo_producto ? r.codigo_producto.toString().toUpperCase() : "";
-      const nvKey = r.nota_vta ? r.nota_vta.toString() : "";
-      const numOpKey = r.num_op ? r.num_op.toString() : "";
-      const esPA  = cod.indexOf("PA") > -1 && cod.indexOf("PSA") === -1;
-      const esPSA = cod.indexOf("PSA") > -1;
+    // Índice de MEDIDAS REALES desde 'base_completo' (detalle línea por
+    // línea de cada NV — mucho más confiable que parsear texto libre).
+    // Cada línea de producto real (con código) puede tener, inmediatamente
+    // después en la misma NV (linea_nv creciente), varias líneas "hijas"
+    // sin código, cuya descripción es solo un largo (ej. "3.537mm") y cuyo
+    // Q_solicitado es la cantidad exacta de piezas de ese largo — sin
+    // necesidad de parsear texto con regex tipo "NN x N.NNNmm".
+    const filasBase = supabaseSelect_('base_completo');
 
-      if (esPA) {
-        candidatoPA = { nv: nvKey, numOp: numOpKey };
-      } else if (esPSA && candidatoPA && candidatoPA.nv === nvKey
-                 && !(candidatoPA.numOp in psaObsPorNumOp)) {
-        psaObsPorNumOp[candidatoPA.numOp] = r.observaciones || "";
+    // Detecta si una descripción es "solo una medida" (nada más que un
+    // número + mm/m), a diferencia de descripciones con texto libre.
+    function esLineaDeMedidaPura_(desc) {
+      if (!desc) return null;
+      const m = String(desc).trim().match(/^([\d.,]+)\s*(mm|m)$/i);
+      if (!m) return null;
+      const aNumeroChileno = (crudoOriginal) => {
+        const crudo = crudoOriginal.trim();
+        if (crudo.indexOf(',') !== -1) {
+          return parseFloat(crudo.replace(/\./g, '').replace(',', '.'));
+        }
+        const partes = crudo.split('.');
+        if (partes.length === 1) return parseFloat(crudo);
+        const ultimaParte = partes[partes.length - 1];
+        if (ultimaParte.length === 3) return parseFloat(partes.join(''));
+        const enteroConMiles = partes.slice(0, -1).join('');
+        return parseFloat(enteroConMiles + '.' + ultimaParte);
+      };
+      const numero = aNumeroChileno(m[1]);
+      if (isNaN(numero)) return null;
+      const unidad = m[2].toLowerCase();
+      return unidad === 'mm' ? numero / 1000 : (numero > 15 ? numero / 1000 : numero);
+    }
+
+    // Agrupa por NV y ordena por linea_nv (la API no garantiza orden).
+    const porNV = {};
+    filasBase.forEach(function(f) {
+      const nv = f.nota_de_venta ? f.nota_de_venta.toString() : "";
+      if (!nv) return;
+      if (!porNV[nv]) porNV[nv] = [];
+      porNV[nv].push(f);
+    });
+    Object.keys(porNV).forEach(function(nv) {
+      porNV[nv].sort(function(a, b) {
+        return (parseFloat(a.linea_nv) || 0) - (parseFloat(b.linea_nv) || 0);
+      });
+    });
+
+    // mlPorNVyCodigo[nv][codigo] = ML total sumado de las líneas de medida
+    // que siguen inmediatamente a la línea "cabecera" de ese código.
+    const mlPorNVyCodigo = {};
+    Object.keys(porNV).forEach(function(nv) {
+      const lineas = porNV[nv];
+      let codigoActual = null;
+      let acumulado = 0;
+
+      function cerrarAcumulado() {
+        if (codigoActual !== null && acumulado > 0) {
+          if (!mlPorNVyCodigo[nv]) mlPorNVyCodigo[nv] = {};
+          mlPorNVyCodigo[nv][codigoActual] = (mlPorNVyCodigo[nv][codigoActual] || 0) + acumulado;
+        }
+        acumulado = 0;
       }
+
+      lineas.forEach(function(f) {
+        const codigo = f.codigo_de_producto ? f.codigo_de_producto.toString().trim().toUpperCase() : "";
+        const desc   = f['descripción'] || "";
+        const qSol   = parseFloat(f['q_solicitado']) || 0;
+        const largoM = esLineaDeMedidaPura_(desc);
+
+        if (codigo) {
+          // Nueva línea "cabecera" — cierra el acumulado anterior y empieza uno nuevo.
+          cerrarAcumulado();
+          codigoActual = codigo;
+        } else if (largoM !== null && codigoActual !== null) {
+          // Línea hija de medida pura: suma cantidad × largo.
+          acumulado += qSol * largoM;
+        }
+      });
+      cerrarAcumulado();
     });
 
     const OPS = [];
@@ -79,19 +135,15 @@ function getPlanPrensas() {
       const obsTexto     = r.observaciones || "";
       let   mlObs        = parsearMedidasObservaciones_(obsTexto);
       const mlDesdeObs    = mlObs !== null;
-      let   mlDesdePSA    = false;
+      let   mlDesdeBase   = false;
 
-      const numOpRaw = r.num_op ? r.num_op.toString() : "";
-      if (mlObs === null && numOpRaw) {
-        const obsPSA = psaObsPorNumOp[numOpRaw];
-        if (obsPSA) {
-          const mlPSA = parsearMedidasObservaciones_(obsPSA);
-          if (mlPSA !== null) {
-            const esISO       = /ISO/.test(tipo);
-            const esPanelBan2 = /^Ban\b/i.test(pieles) && /\|\s*Ban\b/i.test(pieles);
-            mlObs = (esISO && esPanelBan2) ? (mlPSA / 2) : mlPSA;
-            mlDesdePSA = true;
-          }
+      // Prioridad 2: medidas reales desde 'base_completo' (misma NV +
+      // mismo código de producto), en vez de parsear observaciones.
+      if (mlObs === null && nvRaw && codigo) {
+        const porCodigo = mlPorNVyCodigo[nvRaw];
+        if (porCodigo && porCodigo[codigo] > 0) {
+          mlObs = porCodigo[codigo];
+          mlDesdeBase = true;
         }
       }
 
@@ -115,7 +167,7 @@ function getPlanPrensas() {
         nv:     isStock ? "STK" : nv,
         cliente: "", // 'ordenes_de_produccion' no trae cliente directo
         fent:   r.fechaent ? formatDatePlan(r.fechaent) : "",
-        q, tipo, esp, pieles, m2, ml, mlDesdeObs, mlDesdePSA,
+        q, tipo, esp, pieles, m2, ml, mlDesdeObs, mlDesdeBase,
         qOp:   parseFloat(r.cantidad_op)        || pend,
         qTerm: parseFloat(r.cantidad_terminada) || 0,
         group: buildGroupKey(q, tipo, esp, pieles),
