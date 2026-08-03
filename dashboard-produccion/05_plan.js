@@ -39,6 +39,7 @@ function getPlanPrensas() {
     const cEsp  = find("ESPESOR");
     const cCli  = find("CLIENTE");
     const cFent = find("FECHAENT");
+    const cObs  = find("OBSERVACIONES");
 
     if (cPend === -1 || cCod === -1 || cBod === -1)
       return { error: "Faltan columnas básicas (CODIGO/BODEGA/PENDIENTE)" };
@@ -65,8 +66,14 @@ function getPlanPrensas() {
       const ancho     = /a1150/.test(nombre) ? 1.15 : /a910/.test(nombre) ? 0.91 : 1.0;
       const pieles    = parsePielesNombre(nombre);
       const tipo      = parseTipoNombre(nombre, q, esp);
-      const m2        = pend;
-      const ml        = m2 / ancho;
+      const m2          = pend;
+      const obsTexto    = cObs > -1 ? (data[i][cObs] || "") : "";
+      const mlObs       = parsearMedidasObservaciones_(obsTexto);
+      // Si las observaciones traen medidas parseables, se usan esas (más
+      // precisas). Si no (ej. "Flejar...", "Según Nota de Venta N°..."),
+      // se usa el cálculo de respaldo igual que antes de esta integración.
+      const ml          = mlObs !== null ? mlObs : (m2 / ancho);
+      const mlDesdeObs  = mlObs !== null;
       const nv        = data[i][cNV] ? data[i][cNV].toString() : "";
       const isStock   = !nv || nv === "0" || nv === "" || bodega.indexOf("STOCK") > -1;
 
@@ -75,7 +82,7 @@ function getPlanPrensas() {
         nv:     isStock ? "STK" : nv,
         cliente: cCli > -1 ? (data[i][cCli] || "") : "",
         fent:   cFent > -1 ? formatDatePlan(data[i][cFent]) : "",
-        q, tipo, esp, pieles, m2, ml,
+        q, tipo, esp, pieles, m2, ml, mlDesdeObs,
         qOp:   cPed  > -1 ? (parseFloat(data[i][cPed])  || pend) : pend,
         qTerm: cTerm > -1 ? (parseFloat(data[i][cTerm]) || 0)    : 0,
         group: buildGroupKey(q, tipo, esp, pieles),
@@ -121,7 +128,7 @@ function distributePlan(OPS, groups, cfg) {
   const purpEligible = presses.filter(p => p.canPurp);
 
   function pushToPress(p, g, op, portionMl, portionM2, isSplit) {
-    const dl  = /ISO/.test(g.tipo) && cfg.isoDoubleLoad;
+    const dl  = /ISO/.test(g.tipo) && cfg.isoDoubleLoad && g.esp <= 100;
     const effMl = dl ? portionMl / 2 : portionMl;
     const dur   = effMl / p.cap;
     let extraH = 0, cyc = 0;
@@ -171,7 +178,7 @@ function distributePlan(OPS, groups, cfg) {
   }
 
   groups.forEach(g => {
-    g.doubleLoad = /ISO/.test(g.tipo) && cfg.isoDoubleLoad && g.q === 'PolP';
+    g.doubleLoad = /ISO/.test(g.tipo) && cfg.isoDoubleLoad && g.q === 'PolP' && g.esp <= 100;
     g.cycles = g.q === 'PurP' ? Math.ceil(g.totalMl / cfg.purpUtilM) : 0;
   });
 
@@ -275,4 +282,55 @@ function formatDatePlan(d) {
   if (!d) return "";
   if (d instanceof Date) return Utilities.formatDate(d, "GMT-3", "yyyy-MM-dd");
   return d.toString();
+}
+
+/**
+ * parsearMedidasObservaciones_
+ * ============================
+ * Extrae metros lineales (ML) totales desde el texto de observaciones
+ * de una OP. Formato esperado: "NN x N.NNNmm" (cantidad x largo en mm),
+ * pudiendo repetirse separado por "/".
+ *
+ * OJO formato chileno: el PUNTO es separador de MILES, no decimal.
+ * "2.300mm" = 2300mm = 2,3 metros (no 2,3mm).
+ *
+ * Si el texto no matchea el patrón (ej. "Flejar 54ml Acero..." o
+ * "Según Nota de Venta N° 14061 de..."), devuelve null — en ese caso
+ * getPlanPrensas() usa el cálculo de respaldo (cantidad_pendiente / ancho),
+ * igual que antes de esta integración.
+ *
+ * @param {string} texto  Contenido crudo de la columna "observaciones"
+ * @return {number|null}  Metros lineales totales, o null si no matchea
+ */
+function parsearMedidasObservaciones_(texto) {
+  if (!texto) return null;
+
+  const txt = String(texto).trim();
+  const regex = /(\d+)\s*x\s*([\d.,]+)\s*(mm|m)\b/gi;
+
+  let match;
+  let totalML = 0;
+  let encontroAlguna = false;
+
+  while ((match = regex.exec(txt)) !== null) {
+    const cantidad = parseInt(match[1], 10);
+    const crudo    = match[2];
+    const unidad   = match[3].toLowerCase();
+
+    // Formato chileno: punto = separador de miles, coma = decimal.
+    const numero = parseFloat(crudo.replace(/\./g, '').replace(',', '.'));
+    if (isNaN(numero)) continue;
+
+    let largoMetros;
+    if (unidad === 'mm') {
+      largoMetros = numero / 1000;
+    } else {
+      largoMetros = numero > 15 ? numero / 1000 : numero;
+    }
+
+    totalML += cantidad * largoMetros;
+    encontroAlguna = true;
+  }
+
+  return encontroAlguna ? Math.round(totalML * 100) / 100 : null;
 }
