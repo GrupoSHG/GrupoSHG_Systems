@@ -1,24 +1,27 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { Camera, Users, Receipt, TrendingUp, Check, X, Upload, ChevronRight } from "lucide-react";
+import { Camera, Users, Receipt, TrendingUp, Check, X, Upload, ChevronRight, UserPlus } from "lucide-react";
 import {
   fetchCentros,
   fetchPersonas,
+  agregarPersona,
   fetchIniciativas,
   fetchAsistenciaDelDia,
   marcarAsistencia,
   fetchGastosDelDia,
   agregarGasto,
   subirFactura,
+  fetchFacturaPorId,
   fetchFacturacion,
 } from "./data";
+import ResumenGeneral from "./ResumenGeneral";
 
 const clp = (n) => (n ?? 0).toLocaleString("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 });
 const hoy = () => new Date().toISOString().slice(0, 10);
 
 const estadoColor = {
-  en_curso: "bg-[#C9A227] text-[#1C1E1B]",
-  planificada: "bg-[#4A5D52]/20 text-[#4A5D52]",
-  completada: "bg-[#3A5A40]/20 text-[#3A5A40]",
+  en_curso: "bg-[#4C9A2A] text-[#1F3D26]",
+  planificada: "bg-[#5E7A63]/20 text-[#5E7A63]",
+  completada: "bg-[#2C5233]/20 text-[#2C5233]",
 };
 const estadoLabel = { en_curso: "En curso", planificada: "Planificada", completada: "Completada" };
 
@@ -93,18 +96,72 @@ export default function App() {
   const sueldoDia = personas.reduce((acc, p) => (asistencia[p.id] ? acc + Number(p.tarifa_diaria || 0) : acc), 0);
   const gastosDia = gastos.reduce((acc, g) => acc + Number(g.monto || 0), 0);
 
+  const [facturaLeida, setFacturaLeida] = useState(null);
+
   const onSeleccionarFoto = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setOcrEstado("leyendo");
     try {
-      // Sube la foto y crea el registro 'pendiente'; una Edge Function
-      // procesa el OCR en el backend y actualiza el registro.
-      await subirFactura(centroId, file);
-      setOcrEstado("subida");
+      // Sube la foto y crea el registro 'pendiente'; la Edge Function
+      // 'procesar-factura' hace el OCR en el backend y actualiza el registro.
+      const factura = await subirFactura(centroId, file);
+      setOcrEstado("procesando");
+      pollFactura(factura.id);
     } catch (e2) {
       setError(e2.message);
       setOcrEstado(null);
+    }
+  };
+
+  // Consulta cada 2s hasta que la Edge Function termine de procesar (máx. 30s)
+  const pollFactura = (facturaId, intentos = 0) => {
+    setTimeout(async () => {
+      try {
+        const f = await fetchFacturaPorId(facturaId);
+        if (f.estado_ocr === "leida") {
+          setFacturaLeida(f);
+          setOcrEstado("leida");
+        } else if (f.estado_ocr === "error") {
+          setOcrEstado("error");
+        } else if (intentos < 15) {
+          pollFactura(facturaId, intentos + 1);
+        } else {
+          setOcrEstado("timeout");
+        }
+      } catch (e) {
+        setError(e.message);
+        setOcrEstado(null);
+      }
+    }, 2000);
+  };
+
+  const confirmarFacturaLeida = async () => {
+    if (!facturaLeida) return;
+    try {
+      await agregarGasto({
+        centroCostoId: centroId,
+        fecha: facturaLeida.fecha || fecha,
+        descripcion: `Factura — ${facturaLeida.proveedor || "sin proveedor"}`,
+        monto: facturaLeida.monto || 0,
+        categoria: "Materiales",
+        facturaId: facturaLeida.id,
+      });
+      setFacturaLeida(null);
+      setOcrEstado(null);
+      recargarCentro(centroId);
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+
+  const agregarTrabajador = async (nombre, cargo, tarifaDiaria) => {
+    try {
+      await agregarPersona({ nombre, cargo, tarifaDiaria });
+      const ps = await fetchPersonas();
+      setPersonas(ps);
+    } catch (e) {
+      setError(e.message);
     }
   };
 
@@ -119,22 +176,22 @@ export default function App() {
 
   if (cargando) {
     return (
-      <div className="min-h-screen bg-[#EDEAE2] flex items-center justify-center text-[#1C1E1B] font-mono text-sm">
+      <div className="min-h-screen bg-[#EAF2E9] flex items-center justify-center text-[#1F3D26] font-mono text-sm">
         Cargando datos…
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#EDEAE2] text-[#1C1E1B]">
-      <header className="border-b-4 border-[#1C1E1B] bg-[#1C1E1B] text-[#EDEAE2] px-5 py-4">
+    <div className="min-h-screen bg-[#EAF2E9] text-[#1F3D26]">
+      <header className="border-b-4 border-[#1F3D26] bg-[#1F3D26] text-[#EAF2E9] px-5 py-4">
         <div className="max-w-lg mx-auto flex items-center justify-between">
           <div>
-            <p className="text-[10px] tracking-[0.25em] uppercase text-[#C9A227] font-semibold">Control diario</p>
+            <p className="text-[10px] tracking-[0.25em] uppercase text-[#4C9A2A] font-semibold">Control diario</p>
             <h1 className="text-xl font-bold tracking-tight">App Sotito</h1>
           </div>
           <div className="text-right">
-            <p className="text-[10px] uppercase tracking-wider text-[#EDEAE2]/60">Fecha</p>
+            <p className="text-[10px] uppercase tracking-wider text-[#EAF2E9]/60">Fecha</p>
             <p className="font-mono text-sm font-semibold">{fecha}</p>
           </div>
         </div>
@@ -150,7 +207,7 @@ export default function App() {
         <select
           value={centroId ?? ""}
           onChange={(e) => setCentroId(e.target.value)}
-          className="w-full bg-white border-2 border-[#1C1E1B] px-3 py-2.5 font-mono text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#C9A227]"
+          className="w-full bg-white border-2 border-[#1F3D26] px-3 py-2.5 font-mono text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#4C9A2A]"
         >
           {centros.map((c) => (
             <option key={c.id} value={c.id}>
@@ -164,12 +221,13 @@ export default function App() {
         {[
           { id: "formulario", label: "Formulario diario" },
           { id: "dashboard", label: "Resumen" },
+          { id: "general", label: "General" },
         ].map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className={`flex-1 py-2 text-sm font-semibold uppercase tracking-wide border-2 border-[#1C1E1B] transition-colors ${
-              tab === t.id ? "bg-[#1C1E1B] text-[#EDEAE2]" : "bg-transparent text-[#1C1E1B]"
+            className={`flex-1 py-2 text-sm font-semibold uppercase tracking-wide border-2 border-[#1F3D26] transition-colors ${
+              tab === t.id ? "bg-[#1F3D26] text-[#EAF2E9]" : "bg-transparent text-[#1F3D26]"
             }`}
           >
             {t.label}
@@ -177,15 +235,17 @@ export default function App() {
         ))}
       </div>
 
-      <main className="max-w-lg mx-auto px-5 py-5 space-y-5">
-        {tab === "formulario" ? (
+      <main className={`mx-auto px-5 py-5 space-y-5 ${tab === "general" ? "max-w-4xl" : "max-w-lg"}`}>
+        {tab === "general" ? (
+          <ResumenGeneral />
+        ) : tab === "formulario" ? (
           <>
-            <section className="bg-white border-2 border-[#1C1E1B]">
-              <div className="flex items-center gap-2 px-4 py-2.5 border-b-2 border-[#1C1E1B] bg-[#F6F4EE]">
+            <section className="bg-white border-2 border-[#1F3D26]">
+              <div className="flex items-center gap-2 px-4 py-2.5 border-b-2 border-[#1F3D26] bg-[#EFF6EE]">
                 <Users size={16} />
                 <h2 className="text-sm font-bold uppercase tracking-wide">Asistencia de hoy</h2>
               </div>
-              <div className="divide-y divide-[#1C1E1B]/10">
+              <div className="divide-y divide-[#1F3D26]/10">
                 {personas.map((p) => (
                   <button
                     key={p.id}
@@ -194,13 +254,13 @@ export default function App() {
                   >
                     <div>
                       <p className="text-sm font-semibold">{p.nombre}</p>
-                      <p className="text-xs text-[#1C1E1B]/50">
+                      <p className="text-xs text-[#1F3D26]/50">
                         {p.cargo} · {clp(p.tarifa_diaria)}/día
                       </p>
                     </div>
                     <div
-                      className={`w-6 h-6 flex items-center justify-center border-2 border-[#1C1E1B] ${
-                        asistencia[p.id] ? "bg-[#3A5A40]" : "bg-white"
+                      className={`w-6 h-6 flex items-center justify-center border-2 border-[#1F3D26] ${
+                        asistencia[p.id] ? "bg-[#2C5233]" : "bg-white"
                       }`}
                     >
                       {asistencia[p.id] && <Check size={14} className="text-white" />}
@@ -208,86 +268,114 @@ export default function App() {
                   </button>
                 ))}
               </div>
-              <div className="px-4 py-2.5 bg-[#F6F4EE] border-t-2 border-[#1C1E1B] flex justify-between text-sm font-mono font-semibold">
+              <div className="px-4 py-2.5 bg-[#EFF6EE] border-t-2 border-[#1F3D26] flex justify-between text-sm font-mono font-semibold">
                 <span>Gasto en sueldos hoy</span>
                 <span>{clp(sueldoDia)}</span>
               </div>
+              <div className="p-3 border-t-2 border-[#1F3D26]">
+                <FormNuevoTrabajador onAgregar={agregarTrabajador} />
+              </div>
             </section>
 
-            <section className="bg-white border-2 border-[#1C1E1B]">
-              <div className="flex items-center gap-2 px-4 py-2.5 border-b-2 border-[#1C1E1B] bg-[#F6F4EE]">
+            <section className="bg-white border-2 border-[#1F3D26]">
+              <div className="flex items-center gap-2 px-4 py-2.5 border-b-2 border-[#1F3D26] bg-[#EFF6EE]">
                 <Receipt size={16} />
                 <h2 className="text-sm font-bold uppercase tracking-wide">Cargar factura</h2>
               </div>
               <div className="p-4">
                 {!ocrEstado && (
-                  <label className="w-full border-2 border-dashed border-[#1C1E1B]/40 py-6 flex flex-col items-center gap-2 text-[#1C1E1B]/60 hover:border-[#C9A227] hover:text-[#1C1E1B] transition-colors cursor-pointer">
+                  <label className="w-full border-2 border-dashed border-[#1F3D26]/40 py-6 flex flex-col items-center gap-2 text-[#1F3D26]/60 hover:border-[#4C9A2A] hover:text-[#1F3D26] transition-colors cursor-pointer">
                     <Camera size={22} />
                     <span className="text-xs font-semibold uppercase tracking-wide">Tomar foto de la factura</span>
                     <input type="file" accept="image/*" capture="environment" className="hidden" onChange={onSeleccionarFoto} />
                   </label>
                 )}
                 {ocrEstado === "leyendo" && (
-                  <div className="py-6 flex flex-col items-center gap-2 text-[#1C1E1B]/70">
+                  <div className="py-6 flex flex-col items-center gap-2 text-[#1F3D26]/70">
                     <Upload size={20} className="animate-pulse" />
                     <span className="text-xs font-mono">Subiendo imagen…</span>
                   </div>
                 )}
-                {ocrEstado === "subida" && (
-                  <div className="py-4 flex flex-col items-center gap-2 text-[#1C1E1B]/70">
-                    <Check size={20} className="text-[#3A5A40]" />
+                {ocrEstado === "procesando" && (
+                  <div className="py-6 flex flex-col items-center gap-2 text-[#1F3D26]/70">
+                    <Upload size={20} className="animate-pulse" />
+                    <span className="text-xs font-mono">Leyendo factura con OCR…</span>
+                  </div>
+                )}
+                {ocrEstado === "leida" && facturaLeida && (
+                  <div className="space-y-3">
+                    <div className="bg-[#EFF6EE] border border-[#1F3D26]/20 p-3 font-mono text-sm space-y-1">
+                      <p><span className="text-[#1F3D26]/50">Proveedor:</span> {facturaLeida.proveedor || "(no detectado)"}</p>
+                      <p><span className="text-[#1F3D26]/50">Monto:</span> {facturaLeida.monto ? clp(facturaLeida.monto) : "(no detectado)"}</p>
+                      <p><span className="text-[#1F3D26]/50">Fecha:</span> {facturaLeida.fecha || "(no detectada)"}</p>
+                    </div>
+                    <p className="text-[10px] text-[#1F3D26]/40 uppercase tracking-wide">
+                      Revisa y corrige en Supabase si algo quedó mal leído antes de confirmar
+                    </p>
+                    <div className="flex gap-2">
+                      <button onClick={confirmarFacturaLeida} className="flex-1 bg-[#2C5233] text-white py-2 text-sm font-semibold uppercase tracking-wide">
+                        Confirmar y agregar gasto
+                      </button>
+                      <button onClick={() => { setOcrEstado(null); setFacturaLeida(null); }} className="px-4 border-2 border-[#1F3D26]">
+                        <X size={16} />
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {(ocrEstado === "error" || ocrEstado === "timeout") && (
+                  <div className="py-4 flex flex-col items-center gap-2 text-[#1F3D26]/70">
+                    <X size={20} className="text-red-700" />
                     <span className="text-xs font-mono text-center">
-                      Factura subida. El OCR la procesará en segundo plano;
-                      aparecerá como gasto pendiente de revisión.
+                      {ocrEstado === "error" ? "No se pudo leer la factura automáticamente." : "El OCR está tardando más de lo normal."}
                     </span>
-                    <button onClick={() => setOcrEstado(null)} className="text-xs underline">Cargar otra</button>
+                    <button onClick={() => { setOcrEstado(null); setFacturaLeida(null); }} className="text-xs underline">Intentar de nuevo</button>
                   </div>
                 )}
               </div>
             </section>
 
-            <section className="bg-white border-2 border-[#1C1E1B]">
-              <div className="flex items-center justify-between px-4 py-2.5 border-b-2 border-[#1C1E1B] bg-[#F6F4EE]">
+            <section className="bg-white border-2 border-[#1F3D26]">
+              <div className="flex items-center justify-between px-4 py-2.5 border-b-2 border-[#1F3D26] bg-[#EFF6EE]">
                 <h2 className="text-sm font-bold uppercase tracking-wide">Gastos de hoy</h2>
                 <span className="font-mono text-sm font-semibold">{clp(gastosDia)}</span>
               </div>
-              <div className="divide-y divide-[#1C1E1B]/10">
+              <div className="divide-y divide-[#1F3D26]/10">
                 {gastos.map((g) => (
                   <div key={g.id} className="flex justify-between px-4 py-2.5 text-sm">
                     <div>
                       <p className="font-medium">{g.descripcion}</p>
-                      <p className="text-xs text-[#1C1E1B]/50">{g.categoria}</p>
+                      <p className="text-xs text-[#1F3D26]/50">{g.categoria}</p>
                     </div>
                     <span className="font-mono">{clp(g.monto)}</span>
                   </div>
                 ))}
                 {!gastos.length && (
-                  <p className="px-4 py-3 text-xs text-[#1C1E1B]/40 font-mono">Sin gastos registrados hoy.</p>
+                  <p className="px-4 py-3 text-xs text-[#1F3D26]/40 font-mono">Sin gastos registrados hoy.</p>
                 )}
               </div>
-              <div className="p-3 border-t-2 border-[#1C1E1B]">
+              <div className="p-3 border-t-2 border-[#1F3D26]">
                 <FormGastoManual onAgregar={agregarGastoManual} />
               </div>
             </section>
           </>
         ) : (
           <>
-            <section className="bg-[#1C1E1B] text-[#EDEAE2] border-2 border-[#1C1E1B] p-4">
-              <p className="text-[10px] uppercase tracking-[0.2em] text-[#C9A227] font-semibold">{centroActivo?.codigo}</p>
+            <section className="bg-[#1F3D26] text-[#EAF2E9] border-2 border-[#1F3D26] p-4">
+              <p className="text-[10px] uppercase tracking-[0.2em] text-[#4C9A2A] font-semibold">{centroActivo?.codigo}</p>
               <h2 className="text-lg font-bold mb-3">{centroActivo?.nombre}</h2>
               <div className="grid grid-cols-2 gap-3 font-mono">
                 <div>
-                  <p className="text-[10px] uppercase text-[#EDEAE2]/50">Sueldos (mes est.)</p>
+                  <p className="text-[10px] uppercase text-[#EAF2E9]/50">Sueldos (mes est.)</p>
                   <p className="text-lg font-semibold">{clp(sueldoDia * 22)}</p>
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase text-[#EDEAE2]/50">Presupuesto</p>
+                  <p className="text-[10px] uppercase text-[#EAF2E9]/50">Presupuesto</p>
                   <p className="text-lg font-semibold">{clp(centroActivo?.presupuesto_mensual)}</p>
                 </div>
               </div>
-              <div className="mt-3 h-2 bg-[#EDEAE2]/15">
+              <div className="mt-3 h-2 bg-[#EAF2E9]/15">
                 <div
-                  className="h-2 bg-[#C9A227]"
+                  className="h-2 bg-[#4C9A2A]"
                   style={{
                     width: `${Math.min(100, ((sueldoDia * 22) / (centroActivo?.presupuesto_mensual || 1)) * 100)}%`,
                   }}
@@ -295,12 +383,12 @@ export default function App() {
               </div>
             </section>
 
-            <section className="bg-white border-2 border-[#1C1E1B]">
-              <div className="flex items-center gap-2 px-4 py-2.5 border-b-2 border-[#1C1E1B] bg-[#F6F4EE]">
+            <section className="bg-white border-2 border-[#1F3D26]">
+              <div className="flex items-center gap-2 px-4 py-2.5 border-b-2 border-[#1F3D26] bg-[#EFF6EE]">
                 <TrendingUp size={16} />
                 <h2 className="text-sm font-bold uppercase tracking-wide">Iniciativas</h2>
               </div>
-              <div className="divide-y divide-[#1C1E1B]/10">
+              <div className="divide-y divide-[#1F3D26]/10">
                 {iniciativas.map((it) => (
                   <div key={it.id} className="flex items-center justify-between px-4 py-3">
                     <span className="text-sm font-medium">{it.nombre}</span>
@@ -310,30 +398,99 @@ export default function App() {
                   </div>
                 ))}
                 {!iniciativas.length && (
-                  <p className="px-4 py-3 text-xs text-[#1C1E1B]/40 font-mono">Sin iniciativas registradas.</p>
+                  <p className="px-4 py-3 text-xs text-[#1F3D26]/40 font-mono">Sin iniciativas registradas.</p>
                 )}
               </div>
             </section>
 
-            <section className="bg-white border-2 border-[#1C1E1B]">
-              <div className="flex items-center justify-between px-4 py-2.5 border-b-2 border-[#1C1E1B] bg-[#F6F4EE]">
+            <section className="bg-white border-2 border-[#1F3D26]">
+              <div className="flex items-center justify-between px-4 py-2.5 border-b-2 border-[#1F3D26] bg-[#EFF6EE]">
                 <h2 className="text-sm font-bold uppercase tracking-wide">Facturación</h2>
-                <ChevronRight size={16} className="text-[#1C1E1B]/40" />
+                <ChevronRight size={16} className="text-[#1F3D26]/40" />
               </div>
-              <div className="px-4 py-3 space-y-2 font-mono text-sm">
+              <div className="px-4 py-3 space-y-3 font-mono text-sm">
                 {facturacion.map((f) => (
-                  <div key={f.id} className="flex justify-between">
-                    <span className="text-[#1C1E1B]/60">{f.tipo === "estimada" ? "Estimada" : "Real"} — {f.referencia}</span>
-                    <span>{clp(f.monto)}</span>
+                  <div key={f.id} className="border-b border-[#1F3D26]/10 pb-2 last:border-0">
+                    <div className="flex justify-between text-xs text-[#1F3D26]/50 mb-1">
+                      <span>{new Date(f.mes).toLocaleDateString("es-CL", { month: "long", year: "numeric" })}</span>
+                      {centroActivo?.factura_a && <span>Factura a: {centroActivo.factura_a}</span>}
+                    </div>
+                    <div className="flex justify-between"><span className="text-[#1F3D26]/60">Mano de obra</span><span>{clp(f.mano_obra)}</span></div>
+                    <div className="flex justify-between"><span className="text-[#1F3D26]/60">Gastos netos</span><span>{clp(f.gastos_netos)}</span></div>
+                    <div className="flex justify-between font-semibold"><span>Neto a facturar</span><span>{clp(f.neto)}</span></div>
+                    <div className="flex justify-between"><span className="text-[#1F3D26]/60">IVA 19%</span><span>{clp(f.iva)}</span></div>
+                    <div className="flex justify-between font-bold"><span>Total c/IVA</span><span>{clp(f.total)}</span></div>
                   </div>
                 ))}
-                {!facturacion.length && <p className="text-xs text-[#1C1E1B]/40">Sin registros de facturación.</p>}
+                {!facturacion.length && <p className="text-xs text-[#1F3D26]/40">Sin registros de facturación.</p>}
               </div>
             </section>
           </>
         )}
       </main>
     </div>
+  );
+}
+
+function FormNuevoTrabajador({ onAgregar }) {
+  const [abierto, setAbierto] = useState(false);
+  const [nombre, setNombre] = useState("");
+  const [cargo, setCargo] = useState("");
+  const [tarifa, setTarifa] = useState("");
+
+  const submit = (e) => {
+    e.preventDefault();
+    if (!nombre || !tarifa) return;
+    onAgregar(nombre, cargo, Number(tarifa));
+    setNombre("");
+    setCargo("");
+    setTarifa("");
+    setAbierto(false);
+  };
+
+  if (!abierto) {
+    return (
+      <button
+        onClick={() => setAbierto(true)}
+        className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-[#1F3D26]/40 py-2.5 text-xs font-semibold uppercase tracking-wide text-[#1F3D26]/60 hover:border-[#4C9A2A] hover:text-[#1F3D26] transition-colors"
+      >
+        <UserPlus size={14} /> Agregar trabajador
+      </button>
+    );
+  }
+
+  return (
+    <form onSubmit={submit} className="flex flex-col gap-2">
+      <input
+        placeholder="Nombre"
+        value={nombre}
+        onChange={(e) => setNombre(e.target.value)}
+        className="border-2 border-[#1F3D26] px-2 py-1.5 text-sm"
+      />
+      <div className="flex gap-2">
+        <input
+          placeholder="Cargo"
+          value={cargo}
+          onChange={(e) => setCargo(e.target.value)}
+          className="flex-1 border-2 border-[#1F3D26] px-2 py-1.5 text-sm"
+        />
+        <input
+          type="number"
+          placeholder="Tarifa/día"
+          value={tarifa}
+          onChange={(e) => setTarifa(e.target.value)}
+          className="w-28 border-2 border-[#1F3D26] px-2 py-1.5 text-sm font-mono"
+        />
+      </div>
+      <div className="flex gap-2">
+        <button type="submit" className="flex-1 bg-[#1F3D26] text-white py-2 text-sm font-semibold uppercase tracking-wide">
+          Guardar
+        </button>
+        <button type="button" onClick={() => setAbierto(false)} className="px-4 border-2 border-[#1F3D26]">
+          <X size={16} />
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -356,7 +513,7 @@ function FormGastoManual({ onAgregar }) {
         placeholder="Descripción del gasto"
         value={descripcion}
         onChange={(e) => setDescripcion(e.target.value)}
-        className="border-2 border-[#1C1E1B] px-2 py-1.5 text-sm"
+        className="border-2 border-[#1F3D26] px-2 py-1.5 text-sm"
       />
       <div className="flex gap-2">
         <input
@@ -364,12 +521,12 @@ function FormGastoManual({ onAgregar }) {
           placeholder="Monto"
           value={monto}
           onChange={(e) => setMonto(e.target.value)}
-          className="flex-1 border-2 border-[#1C1E1B] px-2 py-1.5 text-sm font-mono"
+          className="flex-1 border-2 border-[#1F3D26] px-2 py-1.5 text-sm font-mono"
         />
         <select
           value={categoria}
           onChange={(e) => setCategoria(e.target.value)}
-          className="border-2 border-[#1C1E1B] px-2 py-1.5 text-sm"
+          className="border-2 border-[#1F3D26] px-2 py-1.5 text-sm"
         >
           <option>Transporte</option>
           <option>Materiales</option>
@@ -377,7 +534,7 @@ function FormGastoManual({ onAgregar }) {
           <option>Otros</option>
         </select>
       </div>
-      <button type="submit" className="bg-[#1C1E1B] text-white py-2 text-sm font-semibold uppercase tracking-wide">
+      <button type="submit" className="bg-[#1F3D26] text-white py-2 text-sm font-semibold uppercase tracking-wide">
         Agregar gasto
       </button>
     </form>

@@ -20,6 +20,16 @@ export async function fetchPersonas() {
   return data;
 }
 
+export async function agregarPersona({ nombre, cargo, tarifaDiaria }) {
+  const { data, error } = await supabase
+    .from("personas")
+    .insert({ nombre, cargo, tarifa_diaria: tarifaDiaria, activo: true })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 export async function fetchIniciativas(centroCostoId) {
   const { data, error } = await supabase
     .from("iniciativas")
@@ -98,11 +108,32 @@ export async function subirFactura(centroCostoId, file) {
   return data;
 }
 
+export async function fetchFacturaPorId(id) {
+  const { data, error } = await supabase.from("facturas").select("*").eq("id", id).single();
+  if (error) throw error;
+  return data;
+}
+
 export async function fetchFacturacion(centroCostoId) {
   const { data, error } = await supabase
     .from("facturacion")
     .select("*")
-    .eq("centro_costo_id", centroCostoId);
+    .eq("centro_costo_id", centroCostoId)
+    .order("mes", { ascending: false });
   if (error) throw error;
   return data;
+}
+
+// ---- Dashboard general (todos los centros de costo) ----
+
+export async function fetchResumenGeneral() {
+  const [{ data: centros, error: e1 }, { data: fact, error: e2 }, { data: gastos, error: e3 }] = await Promise.all([
+    supabase.from("centros_costo").select("*").eq("activo", true).order("nombre"),
+    supabase.from("facturacion").select("*"),
+    supabase.from("gastos").select("centro_costo_id, monto, fecha"),
+  ]);
+  if (e1) throw e1;
+  if (e2) throw e2;
+  if (e3) throw e3;
+  return { centros, facturacion: fact, gastos };
 }
