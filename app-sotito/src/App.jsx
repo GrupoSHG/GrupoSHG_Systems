@@ -11,6 +11,7 @@ import {
   agregarGasto,
   subirFactura,
   fetchFacturaPorId,
+  fetchFacturasCentro,
   fetchFacturacion,
 } from "./data";
 import ResumenGeneral from "./ResumenGeneral";
@@ -35,6 +36,8 @@ export default function App() {
   const [personas, setPersonas] = useState([]);
   const [iniciativas, setIniciativas] = useState([]);
   const [facturacion, setFacturacion] = useState([]);
+  const [facturasSubidas, setFacturasSubidas] = useState([]);
+  const [guardandoTodo, setGuardandoTodo] = useState(false);
   const [asistencia, setAsistencia] = useState({});
   const [gastos, setGastos] = useState([]);
 
@@ -60,11 +63,12 @@ export default function App() {
   const recargarCentro = useCallback(async (id) => {
     if (!id) return;
     try {
-      const [asis, gts, inis, fact] = await Promise.all([
+      const [asis, gts, inis, fact, fotos] = await Promise.all([
         fetchAsistenciaDelDia(id, fecha),
         fetchGastosDelDia(id, fecha),
         fetchIniciativas(id),
         fetchFacturacion(id),
+        fetchFacturasCentro(id),
       ]);
       const asisMap = {};
       asis.forEach((a) => (asisMap[a.persona_id] = a.presente));
@@ -72,6 +76,7 @@ export default function App() {
       setGastos(gts);
       setIniciativas(inis);
       setFacturacion(fact);
+      setFacturasSubidas(fotos);
     } catch (e) {
       setError(e.message);
     }
@@ -83,13 +88,23 @@ export default function App() {
 
   const centroActivo = centros.find((c) => c.id === centroId);
 
+  const [guardadoAsistencia, setGuardadoAsistencia] = useState({}); // personaId -> 'guardando' | 'guardado' | null
+
   const togglePresente = async (personaId) => {
     const nuevoValor = !asistencia[personaId];
     setAsistencia((s) => ({ ...s, [personaId]: nuevoValor }));
+    setGuardadoAsistencia((s) => ({ ...s, [personaId]: "guardando" }));
     try {
       await marcarAsistencia(centroId, personaId, fecha, nuevoValor);
+      setGuardadoAsistencia((s) => ({ ...s, [personaId]: "guardado" }));
+      setTimeout(() => {
+        setGuardadoAsistencia((s) => ({ ...s, [personaId]: null }));
+      }, 1500);
     } catch (e) {
       setError(e.message);
+      setGuardadoAsistencia((s) => ({ ...s, [personaId]: null }));
+      // revertir el cambio optimista si falló el guardado
+      setAsistencia((s) => ({ ...s, [personaId]: !nuevoValor }));
     }
   };
 
@@ -171,6 +186,24 @@ export default function App() {
       recargarCentro(centroId);
     } catch (e) {
       setError(e.message);
+    }
+  };
+
+  // Reconfirma en Supabase la asistencia de todos los trabajadores tal como
+  // está marcada en pantalla, y refresca todo desde la base de datos —
+  // asegura que nada quede sin guardar aunque haya fallado algún guardado
+  // individual (ej. por corte de red al tocar un check).
+  const guardarTodo = async () => {
+    setGuardandoTodo(true);
+    try {
+      await Promise.all(
+        personas.map((p) => marcarAsistencia(centroId, p.id, fecha, !!asistencia[p.id]))
+      );
+      await recargarCentro(centroId);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setGuardandoTodo(false);
     }
   };
 
@@ -258,12 +291,22 @@ export default function App() {
                         {p.cargo} · {clp(p.tarifa_diaria)}/día
                       </p>
                     </div>
-                    <div
-                      className={`w-6 h-6 flex items-center justify-center border-2 border-[#1F3D26] ${
-                        asistencia[p.id] ? "bg-[#2C5233]" : "bg-white"
-                      }`}
-                    >
-                      {asistencia[p.id] && <Check size={14} className="text-white" />}
+                    <div className="flex items-center gap-2">
+                      {guardadoAsistencia[p.id] === "guardando" && (
+                        <span className="text-[9px] uppercase tracking-wide text-[#1F3D26]/40 font-mono">Guardando…</span>
+                      )}
+                      {guardadoAsistencia[p.id] === "guardado" && (
+                        <span className="text-[9px] uppercase tracking-wide text-[#2C5233] font-mono flex items-center gap-1">
+                          <Check size={10} /> Guardado
+                        </span>
+                      )}
+                      <div
+                        className={`w-6 h-6 flex items-center justify-center border-2 border-[#1F3D26] ${
+                          asistencia[p.id] ? "bg-[#2C5233]" : "bg-white"
+                        }`}
+                      >
+                        {asistencia[p.id] && <Check size={14} className="text-white" />}
+                      </div>
                     </div>
                   </button>
                 ))}
@@ -332,6 +375,31 @@ export default function App() {
                   </div>
                 )}
               </div>
+              {!!facturasSubidas.length && (
+                <div className="border-t-2 border-[#1F3D26] p-3">
+                  <p className="text-[10px] uppercase tracking-wide text-[#1F3D26]/50 font-mono mb-2">
+                    Fotos subidas de este centro ({facturasSubidas.length})
+                  </p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {facturasSubidas.map((f) => (
+                      <a key={f.id} href={f.foto_url} target="_blank" rel="noreferrer" className="relative block border-2 border-[#1F3D26]">
+                        <img src={f.foto_url} alt={f.proveedor || "Factura"} className="w-full h-20 object-cover" />
+                        <span
+                          className={`absolute bottom-0 left-0 right-0 text-[8px] font-mono uppercase text-center py-0.5 ${
+                            f.estado_ocr === "leida"
+                              ? "bg-[#4C9A2A] text-[#1F3D26]"
+                              : f.estado_ocr === "error"
+                              ? "bg-red-600 text-white"
+                              : "bg-[#1F3D26]/70 text-white"
+                          }`}
+                        >
+                          {f.estado_ocr}
+                        </span>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
             </section>
 
             <section className="bg-white border-2 border-[#1F3D26]">
@@ -357,6 +425,14 @@ export default function App() {
                 <FormGastoManual onAgregar={agregarGastoManual} />
               </div>
             </section>
+
+            <button
+              onClick={guardarTodo}
+              disabled={guardandoTodo}
+              className="w-full bg-[#4C9A2A] text-[#1F3D26] py-3 text-sm font-bold uppercase tracking-wide border-2 border-[#1F3D26] disabled:opacity-60"
+            >
+              {guardandoTodo ? "Guardando todo…" : "Guardar todo"}
+            </button>
           </>
         ) : (
           <>

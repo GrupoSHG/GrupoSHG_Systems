@@ -108,6 +108,17 @@ export async function subirFactura(centroCostoId, file) {
   return data;
 }
 
+export async function fetchFacturasCentro(centroCostoId) {
+  const { data, error } = await supabase
+    .from("facturas")
+    .select("*")
+    .eq("centro_costo_id", centroCostoId)
+    .order("created_at", { ascending: false })
+    .limit(30);
+  if (error) throw error;
+  return data;
+}
+
 export async function fetchFacturaPorId(id) {
   const { data, error } = await supabase.from("facturas").select("*").eq("id", id).single();
   if (error) throw error;
