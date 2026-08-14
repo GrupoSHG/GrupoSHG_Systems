@@ -26,7 +26,7 @@ Deno.serve(async (req) => {
     const imgResp = await fetch(factura.foto_url);
     if (!imgResp.ok) throw new Error(`No se pudo descargar la imagen: ${imgResp.status}`);
     const imgBuffer = await imgResp.arrayBuffer();
-    const base64Image = btoa(String.fromCharCode(...new Uint8Array(imgBuffer)));
+    const base64Image = arrayBufferToBase64(imgBuffer);
 
     // 2. Llamar a Google Cloud Vision (DOCUMENT_TEXT_DETECTION)
     const visionResp = await fetch(
@@ -76,6 +76,17 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: String(err) }), { status: 500 });
   }
 });
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const chunkSize = 0x8000; // 32 KB por bloque, evita el límite de argumentos de la función
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+  return btoa(binary);
+}
 
 function extraerCampos(texto: string) {
   const lineas = texto.split("\n").map((l) => l.trim()).filter(Boolean);

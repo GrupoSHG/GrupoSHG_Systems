@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { Camera, Users, Receipt, TrendingUp, Check, X, Upload, ChevronRight, UserPlus } from "lucide-react";
+import { Camera, Users, Receipt, TrendingUp, Check, X, Upload, ChevronRight, UserPlus, Plus } from "lucide-react";
 import {
   fetchCentros,
+  agregarCentroCosto,
   fetchPersonas,
   agregarPersona,
   fetchIniciativas,
@@ -38,6 +39,8 @@ export default function App() {
   const [facturacion, setFacturacion] = useState([]);
   const [facturasSubidas, setFacturasSubidas] = useState([]);
   const [guardandoTodo, setGuardandoTodo] = useState(false);
+  const [mostrarNuevoCentro, setMostrarNuevoCentro] = useState(false);
+  const [mesFiltro, setMesFiltro] = useState("todos");
   const [asistencia, setAsistencia] = useState({});
   const [gastos, setGastos] = useState([]);
 
@@ -190,9 +193,7 @@ export default function App() {
   };
 
   // Reconfirma en Supabase la asistencia de todos los trabajadores tal como
-  // está marcada en pantalla, y refresca todo desde la base de datos —
-  // asegura que nada quede sin guardar aunque haya fallado algún guardado
-  // individual (ej. por corte de red al tocar un check).
+  // está marcada en pantalla, y refresca todo desde la base de datos.
   const guardarTodo = async () => {
     setGuardandoTodo(true);
     try {
@@ -204,6 +205,18 @@ export default function App() {
       setError(e.message);
     } finally {
       setGuardandoTodo(false);
+    }
+  };
+
+  const agregarNuevoCentro = async (codigo, nombre, facturaA, presupuestoMensual) => {
+    try {
+      const nuevo = await agregarCentroCosto({ codigo, nombre, facturaA, presupuestoMensual });
+      const cs = await fetchCentros();
+      setCentros(cs);
+      setCentroId(nuevo.id);
+      setMostrarNuevoCentro(false);
+    } catch (e) {
+      setError(e.message);
     }
   };
 
@@ -236,11 +249,11 @@ export default function App() {
         </div>
       )}
 
-      <div className="max-w-lg mx-auto px-5 pt-4">
+      <div className="max-w-lg mx-auto px-5 pt-4 flex gap-2 items-start">
         <select
           value={centroId ?? ""}
           onChange={(e) => setCentroId(e.target.value)}
-          className="w-full bg-white border-2 border-[#1F3D26] px-3 py-2.5 font-mono text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#4C9A2A]"
+          className="flex-1 bg-white border-2 border-[#1F3D26] px-3 py-2.5 font-mono text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#4C9A2A]"
         >
           {centros.map((c) => (
             <option key={c.id} value={c.id}>
@@ -248,7 +261,20 @@ export default function App() {
             </option>
           ))}
         </select>
+        <button
+          onClick={() => setMostrarNuevoCentro((v) => !v)}
+          title="Agregar centro de costo"
+          className="shrink-0 w-11 h-11 flex items-center justify-center bg-[#1F3D26] text-white border-2 border-[#1F3D26]"
+        >
+          <Plus size={18} />
+        </button>
       </div>
+
+      {mostrarNuevoCentro && (
+        <div className="max-w-lg mx-auto px-5 pt-2">
+          <FormNuevoCentro onAgregar={agregarNuevoCentro} onCancelar={() => setMostrarNuevoCentro(false)} />
+        </div>
+      )}
 
       <div className="max-w-lg mx-auto px-5 pt-3 flex gap-2">
         {[
@@ -484,20 +510,38 @@ export default function App() {
                 <h2 className="text-sm font-bold uppercase tracking-wide">Facturación</h2>
                 <ChevronRight size={16} className="text-[#1F3D26]/40" />
               </div>
+              {facturacion.length > 1 && (
+                <div className="px-4 py-2 border-b border-[#1F3D26]/10">
+                  <select
+                    value={mesFiltro}
+                    onChange={(e) => setMesFiltro(e.target.value)}
+                    className="w-full bg-white border-2 border-[#1F3D26] px-2 py-1.5 text-xs font-mono"
+                  >
+                    <option value="todos">Todos los meses</option>
+                    {facturacion.map((f) => (
+                      <option key={f.id} value={f.mes}>
+                        {new Date(f.mes).toLocaleDateString("es-CL", { month: "long", year: "numeric" })}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="px-4 py-3 space-y-3 font-mono text-sm">
-                {facturacion.map((f) => (
-                  <div key={f.id} className="border-b border-[#1F3D26]/10 pb-2 last:border-0">
-                    <div className="flex justify-between text-xs text-[#1F3D26]/50 mb-1">
-                      <span>{new Date(f.mes).toLocaleDateString("es-CL", { month: "long", year: "numeric" })}</span>
-                      {centroActivo?.factura_a && <span>Factura a: {centroActivo.factura_a}</span>}
+                {facturacion
+                  .filter((f) => mesFiltro === "todos" || f.mes === mesFiltro)
+                  .map((f) => (
+                    <div key={f.id} className="border-b border-[#1F3D26]/10 pb-2 last:border-0">
+                      <div className="flex justify-between text-xs text-[#1F3D26]/50 mb-1">
+                        <span>{new Date(f.mes).toLocaleDateString("es-CL", { month: "long", year: "numeric" })}</span>
+                        {centroActivo?.factura_a && <span>Factura a: {centroActivo.factura_a}</span>}
+                      </div>
+                      <div className="flex justify-between"><span className="text-[#1F3D26]/60">Mano de obra</span><span>{clp(f.mano_obra)}</span></div>
+                      <div className="flex justify-between"><span className="text-[#1F3D26]/60">Gastos netos</span><span>{clp(f.gastos_netos)}</span></div>
+                      <div className="flex justify-between font-semibold"><span>Neto a facturar</span><span>{clp(f.neto)}</span></div>
+                      <div className="flex justify-between"><span className="text-[#1F3D26]/60">IVA 19%</span><span>{clp(f.iva)}</span></div>
+                      <div className="flex justify-between font-bold"><span>Total c/IVA</span><span>{clp(f.total)}</span></div>
                     </div>
-                    <div className="flex justify-between"><span className="text-[#1F3D26]/60">Mano de obra</span><span>{clp(f.mano_obra)}</span></div>
-                    <div className="flex justify-between"><span className="text-[#1F3D26]/60">Gastos netos</span><span>{clp(f.gastos_netos)}</span></div>
-                    <div className="flex justify-between font-semibold"><span>Neto a facturar</span><span>{clp(f.neto)}</span></div>
-                    <div className="flex justify-between"><span className="text-[#1F3D26]/60">IVA 19%</span><span>{clp(f.iva)}</span></div>
-                    <div className="flex justify-between font-bold"><span>Total c/IVA</span><span>{clp(f.total)}</span></div>
-                  </div>
-                ))}
+                  ))}
                 {!facturacion.length && <p className="text-xs text-[#1F3D26]/40">Sin registros de facturación.</p>}
               </div>
             </section>
@@ -505,6 +549,66 @@ export default function App() {
         )}
       </main>
     </div>
+  );
+}
+
+function FormNuevoCentro({ onAgregar, onCancelar }) {
+  const [codigo, setCodigo] = useState("");
+  const [nombre, setNombre] = useState("");
+  const [facturaA, setFacturaA] = useState("");
+  const [presupuesto, setPresupuesto] = useState("");
+
+  const submit = (e) => {
+    e.preventDefault();
+    if (!codigo || !nombre) return;
+    onAgregar(codigo.toUpperCase(), nombre, facturaA, presupuesto ? Number(presupuesto) : null);
+    setCodigo("");
+    setNombre("");
+    setFacturaA("");
+    setPresupuesto("");
+  };
+
+  return (
+    <form onSubmit={submit} className="bg-white border-2 border-[#1F3D26] p-3 flex flex-col gap-2">
+      <p className="text-xs font-bold uppercase tracking-wide text-[#1F3D26]">Nuevo centro de costo</p>
+      <div className="flex gap-2">
+        <input
+          placeholder="Código (ej. CYS-BUIN)"
+          value={codigo}
+          onChange={(e) => setCodigo(e.target.value)}
+          className="flex-1 border-2 border-[#1F3D26] px-2 py-1.5 text-sm font-mono"
+        />
+        <input
+          placeholder="Nombre"
+          value={nombre}
+          onChange={(e) => setNombre(e.target.value)}
+          className="flex-1 border-2 border-[#1F3D26] px-2 py-1.5 text-sm"
+        />
+      </div>
+      <div className="flex gap-2">
+        <input
+          placeholder="Factura a (opcional)"
+          value={facturaA}
+          onChange={(e) => setFacturaA(e.target.value)}
+          className="flex-1 border-2 border-[#1F3D26] px-2 py-1.5 text-sm"
+        />
+        <input
+          type="number"
+          placeholder="Presupuesto mensual (opcional)"
+          value={presupuesto}
+          onChange={(e) => setPresupuesto(e.target.value)}
+          className="w-40 border-2 border-[#1F3D26] px-2 py-1.5 text-sm font-mono"
+        />
+      </div>
+      <div className="flex gap-2">
+        <button type="submit" className="flex-1 bg-[#1F3D26] text-white py-2 text-sm font-semibold uppercase tracking-wide">
+          Crear centro de costo
+        </button>
+        <button type="button" onClick={onCancelar} className="px-4 border-2 border-[#1F3D26]">
+          <X size={16} />
+        </button>
+      </div>
+    </form>
   );
 }
 

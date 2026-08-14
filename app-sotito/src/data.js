@@ -10,6 +10,22 @@ export async function fetchCentros() {
   return data;
 }
 
+export async function agregarCentroCosto({ codigo, nombre, facturaA, presupuestoMensual }) {
+  const { data, error } = await supabase
+    .from("centros_costo")
+    .insert({
+      codigo,
+      nombre,
+      factura_a: facturaA || null,
+      presupuesto_mensual: presupuestoMensual || null,
+      activo: true,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 export async function fetchPersonas() {
   const { data, error } = await supabase
     .from("personas")

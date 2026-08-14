@@ -10,6 +10,7 @@ export default function ResumenGeneral() {
   const [centros, setCentros] = useState([]);
   const [facturacion, setFacturacion] = useState([]);
   const [gastos, setGastos] = useState([]);
+  const [mesFiltro, setMesFiltro] = useState("todos");
 
   useEffect(() => {
     (async () => {
@@ -30,11 +31,21 @@ export default function ResumenGeneral() {
     return <p className="text-xs text-[#1F3D26]/50 font-mono px-1">Cargando resumen…</p>;
   }
 
+  const mesesDisponibles = [...new Set(facturacion.map((f) => f.mes))].sort().reverse();
+
+  const facturacionFiltrada =
+    mesFiltro === "todos" ? facturacion : facturacion.filter((f) => f.mes === mesFiltro);
+
+  const gastosFiltrados =
+    mesFiltro === "todos"
+      ? gastos
+      : gastos.filter((g) => g.fecha && g.fecha.slice(0, 7) === mesFiltro.slice(0, 7));
+
   const filaPorCentro = centros.map((c) => {
-    const factC = facturacion.filter((f) => f.centro_costo_id === c.id);
+    const factC = facturacionFiltrada.filter((f) => f.centro_costo_id === c.id);
     const totalFacturado = factC.reduce((acc, f) => acc + Number(f.total || 0), 0);
     const totalManoObra = factC.reduce((acc, f) => acc + Number(f.mano_obra || 0), 0);
-    const totalGastos = gastos
+    const totalGastos = gastosFiltrados
       .filter((g) => g.centro_costo_id === c.id)
       .reduce((acc, g) => acc + Number(g.monto || 0), 0);
     return { ...c, totalFacturado, totalManoObra, totalGastos };
@@ -57,7 +68,23 @@ export default function ResumenGeneral() {
       )}
 
       <section className="bg-[#1F3D26] text-[#EAF2E9] border-2 border-[#1F3D26] p-4">
-        <p className="text-[10px] uppercase tracking-[0.2em] text-[#4C9A2A] font-semibold">Todos los centros de costo</p>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-[10px] uppercase tracking-[0.2em] text-[#4C9A2A] font-semibold">Todos los centros de costo</p>
+          {!!mesesDisponibles.length && (
+            <select
+              value={mesFiltro}
+              onChange={(e) => setMesFiltro(e.target.value)}
+              className="bg-[#EAF2E9] text-[#1F3D26] border-2 border-[#4C9A2A] px-2 py-1 text-xs font-mono"
+            >
+              <option value="todos">Todos los meses</option>
+              {mesesDisponibles.map((m) => (
+                <option key={m} value={m}>
+                  {new Date(m).toLocaleDateString("es-CL", { month: "long", year: "numeric" })}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
         <div className="grid grid-cols-2 gap-3 font-mono mt-2">
           <div>
             <p className="text-[10px] uppercase text-[#EAF2E9]/50">Facturado total</p>
