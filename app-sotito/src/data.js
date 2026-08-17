@@ -123,13 +123,21 @@ export async function subirFactura(centroCostoId, file) {
   return data;
 }
 
-export async function fetchFacturasCentro(centroCostoId) {
-  const { data, error } = await supabase
+export async function fetchFacturasCentro(centroCostoId, soloHoy = true) {
+  let query = supabase
     .from("facturas")
     .select("*")
     .eq("centro_costo_id", centroCostoId)
     .order("created_at", { ascending: false })
     .limit(30);
+
+  if (soloHoy) {
+    const inicio = new Date();
+    inicio.setHours(0, 0, 0, 0);
+    query = query.gte("created_at", inicio.toISOString());
+  }
+
+  const { data, error } = await query;
   if (error) throw error;
   return data;
 }
