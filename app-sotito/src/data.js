@@ -103,7 +103,6 @@ export async function agregarGasto({ centroCostoId, fecha, descripcion, monto, c
 
 // Sube la foto a Storage y crea el registro de factura en estado 'pendiente'.
 // El OCR (Google Cloud Vision) se llama desde una Edge Function de Supabase
-// que procesa la imagen y actualiza el registro a 'leida'.
 export async function subirFactura(centroCostoId, file) {
   const path = `facturas/${centroCostoId}/${Date.now()}_${file.name}`;
   const { error: uploadError } = await supabase.storage.from("facturas").upload(path, file);
@@ -116,7 +115,7 @@ export async function subirFactura(centroCostoId, file) {
     .insert({
       centro_costo_id: centroCostoId,
       foto_url: publicUrl.publicUrl,
-      estado_ocr: "pendiente",
+      estado_ocr: "confirmada", // ya no se procesa con OCR, queda guardada directamente
     })
     .select()
     .single();

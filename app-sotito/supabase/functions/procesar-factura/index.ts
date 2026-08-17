@@ -18,14 +18,23 @@ Deno.serve(async (req) => {
     const payload = await req.json();
     const factura = payload.record ?? payload; // soporta llamada directa o webhook
 
+    console.log("Procesando factura:", factura?.id, factura?.foto_url);
+
     if (!factura?.id || !factura?.foto_url) {
       return new Response(JSON.stringify({ error: "Falta id o foto_url" }), { status: 400 });
+    }
+
+    if (!GOOGLE_VISION_API_KEY) {
+      console.error("GOOGLE_VISION_API_KEY no está configurada");
+      await supabase.from("facturas").update({ estado_ocr: "error" }).eq("id", factura.id);
+      return new Response(JSON.stringify({ error: "Falta GOOGLE_VISION_API_KEY" }), { status: 200 });
     }
 
     // 1. Descargar la imagen y convertirla a base64
     const imgResp = await fetch(factura.foto_url);
     if (!imgResp.ok) throw new Error(`No se pudo descargar la imagen: ${imgResp.status}`);
     const imgBuffer = await imgResp.arrayBuffer();
+    console.log("Imagen descargada, tamaño:", imgBuffer.byteLength, "bytes");
     const base64Image = arrayBufferToBase64(imgBuffer);
 
     // 2. Llamar a Google Cloud Vision (DOCUMENT_TEXT_DETECTION)
@@ -44,16 +53,34 @@ Deno.serve(async (req) => {
         }),
       }
     );
+
+    console.log("Status de respuesta de Vision API:", visionResp.status);
     const visionData = await visionResp.json();
+
+    // Si Vision devolvió un error (API key inválida, facturación no habilitada, etc.)
+    if (visionData?.responses?.[0]?.error) {
+      console.error("Error de Vision API:", JSON.stringify(visionData.responses[0].error));
+      await supabase.from("facturas").update({ estado_ocr: "error" }).eq("id", factura.id);
+      return new Response(JSON.stringify({ error: visionData.responses[0].error }), { status: 200 });
+    }
+    if (!visionResp.ok) {
+      console.error("Vision API respondió con error HTTP:", JSON.stringify(visionData));
+      await supabase.from("facturas").update({ estado_ocr: "error" }).eq("id", factura.id);
+      return new Response(JSON.stringify({ error: visionData }), { status: 200 });
+    }
+
     const texto: string = visionData?.responses?.[0]?.fullTextAnnotation?.text ?? "";
+    console.log("Texto detectado (primeros 200 caracteres):", texto.slice(0, 200) || "(vacío)");
 
     if (!texto) {
+      console.warn("OCR no devolvió texto para la factura", factura.id);
       await supabase.from("facturas").update({ estado_ocr: "error" }).eq("id", factura.id);
       return new Response(JSON.stringify({ error: "OCR no devolvió texto" }), { status: 200 });
     }
 
     // 3. Extraer campos con heurísticas simples sobre el texto plano
     const { proveedor, monto, fecha } = extraerCampos(texto);
+    console.log("Campos extraídos:", { proveedor, monto, fecha });
 
     // 4. Guardar resultado — queda en 'leida', el usuario confirma/corrige en la app
     const { error } = await supabase
@@ -72,7 +99,7 @@ Deno.serve(async (req) => {
       headers: { "Content-Type": "application/json" },
     });
   } catch (err) {
-    console.error(err);
+    console.error("Error inesperado en procesar-factura:", err);
     return new Response(JSON.stringify({ error: String(err) }), { status: 500 });
   }
 });

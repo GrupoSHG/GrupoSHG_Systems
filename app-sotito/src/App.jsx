@@ -121,11 +121,9 @@ export default function App() {
     if (!file) return;
     setOcrEstado("leyendo");
     try {
-      // Sube la foto y crea el registro 'pendiente'; la Edge Function
-      // 'procesar-factura' hace el OCR en el backend y actualiza el registro.
-      const factura = await subirFactura(centroId, file);
-      setOcrEstado("procesando");
-      pollFactura(factura.id);
+      await subirFactura(centroId, file);
+      setOcrEstado(null);
+      recargarCentro(centroId); // refresca la galería para que se vea la foto nueva
     } catch (e2) {
       setError(e2.message);
       setOcrEstado(null);
