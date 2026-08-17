@@ -171,3 +171,15 @@ export async function fetchResumenGeneral() {
   if (e3) throw e3;
   return { centros, facturacion: fact, gastos };
 }
+
+export async function eliminarFactura(id, fotoUrl) {
+  // Borra el archivo de Storage también, usando la ruta dentro del bucket
+  if (fotoUrl) {
+    const path = fotoUrl.split("/storage/v1/object/public/facturas/")[1];
+    if (path) {
+      await supabase.storage.from("facturas").remove([path]);
+    }
+  }
+  const { error } = await supabase.from("facturas").delete().eq("id", id);
+  if (error) throw error;
+}

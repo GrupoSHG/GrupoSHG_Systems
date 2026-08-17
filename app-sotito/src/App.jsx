@@ -14,6 +14,7 @@ import {
   fetchFacturaPorId,
   fetchFacturasCentro,
   fetchFacturacion,
+  eliminarFactura,
 } from "./data";
 import ResumenGeneral from "./ResumenGeneral";
 
