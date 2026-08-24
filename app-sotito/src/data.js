@@ -1,7 +1,11 @@
 import { supabase } from "./supabaseClient";
 
+// Todas las tablas de esta app viven en el esquema shg_dashboards del proyecto
+// Supabase compartido (ffxopvzxyeacpbtxuagu) — no en "public".
+const db = supabase.schema("shg_dashboards");
+
 export async function fetchCentros() {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("centros_costo")
     .select("*")
     .eq("activo", true)
@@ -11,7 +15,7 @@ export async function fetchCentros() {
 }
 
 export async function agregarCentroCosto({ codigo, nombre, facturaA, presupuestoMensual }) {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("centros_costo")
     .insert({
       codigo,
@@ -27,7 +31,7 @@ export async function agregarCentroCosto({ codigo, nombre, facturaA, presupuesto
 }
 
 export async function fetchPersonas() {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("personas")
     .select("*")
     .eq("activo", true)
@@ -37,7 +41,7 @@ export async function fetchPersonas() {
 }
 
 export async function agregarPersona({ nombre, cargo, tarifaDiaria }) {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("personas")
     .insert({ nombre, cargo, tarifa_diaria: tarifaDiaria, activo: true })
     .select()
@@ -47,7 +51,7 @@ export async function agregarPersona({ nombre, cargo, tarifaDiaria }) {
 }
 
 export async function fetchIniciativas(centroCostoId) {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("iniciativas")
     .select("*")
     .eq("centro_costo_id", centroCostoId);
@@ -56,7 +60,7 @@ export async function fetchIniciativas(centroCostoId) {
 }
 
 export async function fetchAsistenciaDelDia(centroCostoId, fecha) {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("asistencia")
     .select("*")
     .eq("centro_costo_id", centroCostoId)
@@ -66,7 +70,7 @@ export async function fetchAsistenciaDelDia(centroCostoId, fecha) {
 }
 
 export async function marcarAsistencia(centroCostoId, personaId, fecha, presente) {
-  const { error } = await supabase.from("asistencia").upsert(
+  const { error } = await db.from("asistencia").upsert(
     {
       centro_costo_id: centroCostoId,
       persona_id: personaId,
@@ -79,7 +83,7 @@ export async function marcarAsistencia(centroCostoId, personaId, fecha, presente
 }
 
 export async function fetchGastosDelDia(centroCostoId, fecha) {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("gastos")
     .select("*")
     .eq("centro_costo_id", centroCostoId)
@@ -90,7 +94,7 @@ export async function fetchGastosDelDia(centroCostoId, fecha) {
 }
 
 export async function agregarGasto({ centroCostoId, fecha, descripcion, monto, categoria, facturaId }) {
-  const { error } = await supabase.from("gastos").insert({
+  const { error } = await db.from("gastos").insert({
     centro_costo_id: centroCostoId,
     fecha,
     descripcion,
@@ -110,7 +114,7 @@ export async function subirFactura(centroCostoId, file) {
 
   const { data: publicUrl } = supabase.storage.from("facturas").getPublicUrl(path);
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("facturas")
     .insert({
       centro_costo_id: centroCostoId,
@@ -124,7 +128,7 @@ export async function subirFactura(centroCostoId, file) {
 }
 
 export async function fetchFacturasCentro(centroCostoId, soloHoy = true) {
-  let query = supabase
+  let query = db
     .from("facturas")
     .select("*")
     .eq("centro_costo_id", centroCostoId)
@@ -143,13 +147,13 @@ export async function fetchFacturasCentro(centroCostoId, soloHoy = true) {
 }
 
 export async function fetchFacturaPorId(id) {
-  const { data, error } = await supabase.from("facturas").select("*").eq("id", id).single();
+  const { data, error } = await db.from("facturas").select("*").eq("id", id).single();
   if (error) throw error;
   return data;
 }
 
 export async function fetchFacturacion(centroCostoId) {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("facturacion")
     .select("*")
     .eq("centro_costo_id", centroCostoId)
@@ -162,9 +166,9 @@ export async function fetchFacturacion(centroCostoId) {
 
 export async function fetchResumenGeneral() {
   const [{ data: centros, error: e1 }, { data: fact, error: e2 }, { data: gastos, error: e3 }] = await Promise.all([
-    supabase.from("centros_costo").select("*").eq("activo", true).order("nombre"),
-    supabase.from("facturacion").select("*"),
-    supabase.from("gastos").select("centro_costo_id, monto, fecha"),
+    db.from("centros_costo").select("*").eq("activo", true).order("nombre"),
+    db.from("facturacion").select("*"),
+    db.from("gastos").select("centro_costo_id, monto, fecha"),
   ]);
   if (e1) throw e1;
   if (e2) throw e2;
@@ -180,6 +184,6 @@ export async function eliminarFactura(id, fotoUrl) {
       await supabase.storage.from("facturas").remove([path]);
     }
   }
-  const { error } = await supabase.from("facturas").delete().eq("id", id);
+  const { error } = await db.from("facturas").delete().eq("id", id);
   if (error) throw error;
 }
