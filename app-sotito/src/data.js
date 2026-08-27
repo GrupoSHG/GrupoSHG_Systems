@@ -1,8 +1,8 @@
 import { supabase } from "./supabaseClient";
 
-// Todas las tablas de esta app viven en el esquema shg_dashboards del proyecto
+// Todas las tablas de esta app viven en el esquema app_cys del proyecto
 // Supabase compartido (ffxopvzxyeacpbtxuagu) — no en "public".
-const db = supabase.schema("shg_dashboards");
+const db = supabase.schema("app_cys");
 
 export async function fetchCentros() {
   const { data, error } = await db
