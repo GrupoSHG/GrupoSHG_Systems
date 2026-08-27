@@ -187,3 +187,37 @@ export async function eliminarFactura(id, fotoUrl) {
   const { error } = await db.from("facturas").delete().eq("id", id);
   if (error) throw error;
 }
+
+// ---- Asistencia por persona, en qué CD y cuántos días ----
+
+export async function fetchAsistenciaPorPersona() {
+  const [{ data: asis, error: e1 }, { data: personas, error: e2 }, { data: centros, error: e3 }] =
+    await Promise.all([
+      db.from("asistencia").select("persona_id, centro_costo_id, fecha, presente").eq("presente", true),
+      db.from("personas").select("id, nombre").eq("activo", true).order("nombre"),
+      db.from("centros_costo").select("id, nombre").eq("activo", true).order("nombre"),
+    ]);
+  if (e1) throw e1;
+  if (e2) throw e2;
+  if (e3) throw e3;
+
+  const centroPorId = Object.fromEntries((centros || []).map((c) => [c.id, c.nombre]));
+
+  // persona_id -> { centro_nombre -> [fechas] }
+  const porPersona = {};
+  for (const a of asis || []) {
+    if (!porPersona[a.persona_id]) porPersona[a.persona_id] = {};
+    const nombreCentro = centroPorId[a.centro_costo_id] || "Centro desconocido";
+    if (!porPersona[a.persona_id][nombreCentro]) porPersona[a.persona_id][nombreCentro] = [];
+    porPersona[a.persona_id][nombreCentro].push(a.fecha);
+  }
+
+  return (personas || []).map((p) => {
+    const centrosDeEstaPersona = porPersona[p.id] || {};
+    const detalle = Object.entries(centrosDeEstaPersona)
+      .map(([centro, fechas]) => ({ centro, dias: fechas.length, fechas: fechas.sort() }))
+      .sort((a, b) => b.dias - a.dias);
+    const totalDias = detalle.reduce((acc, d) => acc + d.dias, 0);
+    return { personaId: p.id, nombre: p.nombre, totalDias, centros: detalle };
+  });
+}

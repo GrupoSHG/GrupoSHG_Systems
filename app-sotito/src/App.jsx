@@ -17,6 +17,7 @@ import {
   eliminarFactura,
 } from "./data";
 import ResumenGeneral from "./ResumenGeneral";
+import AsistenciaPorPersona from "./AsistenciaPorPersona";
 
 const clp = (n) => (n ?? 0).toLocaleString("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 });
 const hoy = () => new Date().toISOString().slice(0, 10);
@@ -279,6 +280,7 @@ export default function App() {
         {[
           { id: "formulario", label: "Formulario diario" },
           { id: "dashboard", label: "Resumen" },
+          { id: "asistencia", label: "Asistencia" },
           { id: "general", label: "General" },
         ].map((t) => (
           <button
@@ -296,6 +298,8 @@ export default function App() {
       <main className={`mx-auto px-5 py-5 space-y-5 ${tab === "general" ? "max-w-4xl" : "max-w-lg"}`}>
         {tab === "general" ? (
           <ResumenGeneral />
+        ) : tab === "asistencia" ? (
+          <AsistenciaPorPersona />
         ) : tab === "formulario" ? (
           <>
             <section className="bg-white border-2 border-[#1F3D26]">
