@@ -17,6 +17,8 @@ import {
   eliminarFactura,
 } from "./data";
 import ResumenGeneral from "./ResumenGeneral";
+import AsistenciaPorPersona from "./AsistenciaPorPersona";
+import AsistenciaPorCentro from "./AsistenciaPorCentro";
 
 const clp = (n) => (n ?? 0).toLocaleString("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 });
 const hoy = () => new Date().toISOString().slice(0, 10);
@@ -46,7 +48,7 @@ export default function App() {
   const [gastos, setGastos] = useState([]);
 
   const [ocrEstado, setOcrEstado] = useState(null);
-  const fecha = hoy();
+  const [fecha, setFecha] = useState(hoy()); // Convertido a estado para poder cambiar de día
 
   // Carga inicial: centros de costo y personas activas
   useEffect(() => {
@@ -235,9 +237,14 @@ export default function App() {
             <p className="text-[10px] tracking-[0.25em] uppercase text-[#4C9A2A] font-semibold">Control diario</p>
             <h1 className="text-xl font-bold tracking-tight">App Sotito</h1>
           </div>
-          <div className="text-right">
+          <div className="text-right flex flex-col items-end">
             <p className="text-[10px] uppercase tracking-wider text-[#EAF2E9]/60">Fecha</p>
-            <p className="font-mono text-sm font-semibold">{fecha}</p>
+            <input 
+              type="date" 
+              value={fecha} 
+              onChange={(e) => setFecha(e.target.value)} 
+              className="bg-transparent text-right font-mono text-sm font-semibold text-[#EAF2E9] focus:outline-none focus:border-b focus:border-[#4C9A2A] [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert"
+            />
           </div>
         </div>
       </header>
@@ -275,16 +282,18 @@ export default function App() {
         </div>
       )}
 
-      <div className="max-w-lg mx-auto px-5 pt-3 flex gap-2">
+      <div className="max-w-lg mx-auto px-5 pt-3 flex gap-2 overflow-x-auto">
         {[
-          { id: "formulario", label: "Formulario diario" },
+          { id: "formulario", label: "Diario" },
+          { id: "detalle_centro", label: "Detalle Obra" },
+          { id: "asistencia", label: "Asistencia" },
           { id: "dashboard", label: "Resumen" },
           { id: "general", label: "General" },
         ].map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className={`flex-1 py-2 text-sm font-semibold uppercase tracking-wide border-2 border-[#1F3D26] transition-colors ${
+            className={`shrink-0 flex-1 py-2 text-xs font-semibold uppercase tracking-wide border-2 border-[#1F3D26] transition-colors ${
               tab === t.id ? "bg-[#1F3D26] text-[#EAF2E9]" : "bg-transparent text-[#1F3D26]"
             }`}
           >
@@ -296,6 +305,10 @@ export default function App() {
       <main className={`mx-auto px-5 py-5 space-y-5 ${tab === "general" ? "max-w-4xl" : "max-w-lg"}`}>
         {tab === "general" ? (
           <ResumenGeneral />
+        ) : tab === "detalle_centro" ? (
+          <AsistenciaPorCentro centroId={centroId} />
+        ) : tab === "asistencia" ? (
+          <AsistenciaPorPersona />
         ) : tab === "formulario" ? (
           <>
             <section className="bg-white border-2 border-[#1F3D26]">

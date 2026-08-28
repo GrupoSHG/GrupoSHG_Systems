@@ -187,3 +187,32 @@ export async function eliminarFactura(id, fotoUrl) {
   const { error } = await db.from("facturas").delete().eq("id", id);
   if (error) throw error;
 }
+export async function fetchDetalleAsistenciaCentro(centroCostoId) {
+  const { data, error } = await db
+    .from("asistencia")
+    .select(`
+      fecha,
+      personas ( nombre )
+    `)
+    .eq("centro_costo_id", centroCostoId)
+    .eq("presente", true)
+    .order("fecha", { ascending: false });
+
+  if (error) throw error;
+
+  // Agrupar los resultados por fecha
+  const agrupado = data.reduce((acc, row) => {
+    const fecha = row.fecha;
+    const nombrePersona = row.personas?.nombre || 'Trabajador desconocido';
+    
+    if (!acc[fecha]) acc[fecha] = [];
+    acc[fecha].push(nombrePersona);
+    return acc;
+  }, {});
+
+  // Convertir el objeto agrupado a un arreglo para recorrerlo en React
+  return Object.keys(agrupado).map((fecha) => ({
+    fecha,
+    trabajadores: agrupado[fecha],
+  }));
+}
