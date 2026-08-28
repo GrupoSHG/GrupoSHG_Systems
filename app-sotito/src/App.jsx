@@ -384,24 +384,49 @@ export default function App() {
                   </div>
                 )}
                 {ocrEstado === "leida" && facturaLeida && (
-                  <div className="space-y-3">
-                    <div className="bg-[#EFF6EE] border border-[#1F3D26]/20 p-3 font-mono text-sm space-y-1">
-                      <p><span className="text-[#1F3D26]/50">Proveedor:</span> {facturaLeida.proveedor || "(no detectado)"}</p>
-                      <p><span className="text-[#1F3D26]/50">Monto:</span> {facturaLeida.monto ? clp(facturaLeida.monto) : "(no detectado)"}</p>
-                      <p><span className="text-[#1F3D26]/50">Fecha:</span> {facturaLeida.fecha || "(no detectada)"}</p>
+                  <form onSubmit={(e) => { e.preventDefault(); confirmarFacturaLeida(); }} className="space-y-3">
+                    <div className="bg-[#EFF6EE] border border-[#1F3D26]/20 p-3 text-sm space-y-2 flex flex-col">
+                      <p className="font-mono text-xs text-[#1F3D26]/50 mb-1">Confirma o corrige los datos:</p>
+                      
+                      <input 
+                        type="date" 
+                        required
+                        value={facturaLeida.fecha || fecha}
+                        onChange={(e) => setFacturaLeida({...facturaLeida, fecha: e.target.value})}
+                        className="border-2 border-[#1F3D26] px-2 py-1.5 font-mono"
+                      />
+                      
+                      <input 
+                        type="number" 
+                        placeholder="Monto total"
+                        required
+                        value={facturaLeida.monto || ''}
+                        onChange={(e) => setFacturaLeida({...facturaLeida, monto: e.target.value})}
+                        className="border-2 border-[#1F3D26] px-2 py-1.5 font-mono"
+                      />
+                      
+                      <select
+                        value={facturaLeida.categoria || 'Materiales'}
+                        onChange={(e) => setFacturaLeida({...facturaLeida, categoria: e.target.value})}
+                        className="border-2 border-[#1F3D26] px-2 py-1.5"
+                      >
+                        <option>Transporte</option>
+                        <option>Materiales</option>
+                        <option>Alimentación</option>
+                        <option>Palet</option>
+                        <option>Otros</option>
+                      </select>
                     </div>
-                    <p className="text-[10px] text-[#1F3D26]/40 uppercase tracking-wide">
-                      Revisa y corrige en Supabase si algo quedó mal leído antes de confirmar
-                    </p>
+                    
                     <div className="flex gap-2">
-                      <button onClick={confirmarFacturaLeida} className="flex-1 bg-[#2C5233] text-white py-2 text-sm font-semibold uppercase tracking-wide">
-                        Confirmar y agregar gasto
+                      <button type="submit" className="flex-1 bg-[#2C5233] text-white py-2 text-sm font-semibold uppercase tracking-wide">
+                        Confirmar Gasto
                       </button>
-                      <button onClick={() => { setOcrEstado(null); setFacturaLeida(null); }} className="px-4 border-2 border-[#1F3D26]">
+                      <button type="button" onClick={() => { setOcrEstado(null); setFacturaLeida(null); }} className="px-4 border-2 border-[#1F3D26]">
                         <X size={16} />
                       </button>
                     </div>
-                  </div>
+                  </form>
                 )}
                 {(ocrEstado === "error" || ocrEstado === "timeout") && (
                   <div className="py-4 flex flex-col items-center gap-2 text-[#1F3D26]/70">

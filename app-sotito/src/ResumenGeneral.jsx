@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LabelList } from "recharts";
 import { fetchResumenGeneral } from "./data";
 
 const clp = (n) => (n ?? 0).toLocaleString("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 });
@@ -140,10 +140,16 @@ export default function ResumenGeneral() {
               <XAxis dataKey="nombre" tick={{ fontSize: 10 }} interval={0} angle={-20} textAnchor="end" height={50} />
               <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
               <Tooltip formatter={(v) => clp(v)} />
-              <Bar dataKey="Mano de obra" fill="#2C5233" />
-              <Bar dataKey="Gastos" fill="#4C9A2A" />
-              <Bar dataKey="Facturado" fill="#1F3D26" />
-            </BarChart>
+              <Bar dataKey="Mano de obra" fill="#2C5233">
+                <LabelList dataKey="Mano de obra" position="top" formatter={(v) => v > 0 ? clp(v) : ''} style={{ fontSize: '9px', fill: '#1F3D26', fontWeight: 'bold' }} />
+              </Bar>
+              <Bar dataKey="Gastos" fill="#4C9A2A">
+                <LabelList dataKey="Gastos" position="top" formatter={(v) => v > 0 ? clp(v) : ''} style={{ fontSize: '9px', fill: '#1F3D26', fontWeight: 'bold' }} />
+              </Bar>
+              <Bar dataKey="Facturado" fill="#1F3D26">
+                <LabelList dataKey="Facturado" position="top" formatter={(v) => v > 0 ? clp(v) : ''} style={{ fontSize: '9px', fill: '#1F3D26', fontWeight: 'bold' }} />
+              </Bar>
+              </BarChart>
           </ResponsiveContainer>
         </div>
       </section>
