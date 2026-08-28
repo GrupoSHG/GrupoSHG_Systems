@@ -17,7 +17,6 @@ import {
   eliminarFactura,
 } from "./data";
 import ResumenGeneral from "./ResumenGeneral";
-import AsistenciaPorPersona from "./AsistenciaPorPersona";
 
 const clp = (n) => (n ?? 0).toLocaleString("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 });
 const hoy = () => new Date().toISOString().slice(0, 10);
@@ -280,7 +279,6 @@ export default function App() {
         {[
           { id: "formulario", label: "Formulario diario" },
           { id: "dashboard", label: "Resumen" },
-          { id: "asistencia", label: "Asistencia" },
           { id: "general", label: "General" },
         ].map((t) => (
           <button
@@ -298,8 +296,6 @@ export default function App() {
       <main className={`mx-auto px-5 py-5 space-y-5 ${tab === "general" ? "max-w-4xl" : "max-w-lg"}`}>
         {tab === "general" ? (
           <ResumenGeneral />
-        ) : tab === "asistencia" ? (
-          <AsistenciaPorPersona />
         ) : tab === "formulario" ? (
           <>
             <section className="bg-white border-2 border-[#1F3D26]">
@@ -520,10 +516,12 @@ export default function App() {
                     onChange={(e) => setMesFiltro(e.target.value)}
                     className="w-full bg-white border-2 border-[#1F3D26] px-2 py-1.5 text-xs font-mono"
                   >
-                    <option value="todos">Todos los meses</option>
+                    <option value="todos">Todos los períodos</option>
                     {facturacion.map((f) => (
-                      <option key={f.id} value={f.mes}>
-                        {new Date(f.mes).toLocaleDateString("es-CL", { month: "long", year: "numeric" })}
+                      <option key={f.id} value={f.periodo_inicio}>
+                        {new Date(f.periodo_inicio).toLocaleDateString("es-CL", { day: "2-digit", month: "short" })}
+                        {" – "}
+                        {new Date(f.periodo_fin).toLocaleDateString("es-CL", { day: "2-digit", month: "short", year: "numeric" })}
                       </option>
                     ))}
                   </select>
@@ -531,18 +529,20 @@ export default function App() {
               )}
               <div className="px-4 py-3 space-y-3 font-mono text-sm">
                 {facturacion
-                  .filter((f) => mesFiltro === "todos" || f.mes === mesFiltro)
+                  .filter((f) => mesFiltro === "todos" || f.periodo_inicio === mesFiltro)
                   .map((f) => (
                     <div key={f.id} className="border-b border-[#1F3D26]/10 pb-2 last:border-0">
                       <div className="flex justify-between text-xs text-[#1F3D26]/50 mb-1">
-                        <span>{new Date(f.mes).toLocaleDateString("es-CL", { month: "long", year: "numeric" })}</span>
+                        <span>
+                          {new Date(f.periodo_inicio).toLocaleDateString("es-CL", { day: "2-digit", month: "short" })}
+                          {" – "}
+                          {new Date(f.periodo_fin).toLocaleDateString("es-CL", { day: "2-digit", month: "short", year: "numeric" })}
+                        </span>
                         {centroActivo?.factura_a && <span>Factura a: {centroActivo.factura_a}</span>}
                       </div>
                       <div className="flex justify-between"><span className="text-[#1F3D26]/60">Mano de obra</span><span>{clp(f.mano_obra)}</span></div>
                       <div className="flex justify-between"><span className="text-[#1F3D26]/60">Gastos netos</span><span>{clp(f.gastos_netos)}</span></div>
-                      <div className="flex justify-between font-semibold"><span>Neto a facturar</span><span>{clp(f.neto)}</span></div>
-                      <div className="flex justify-between"><span className="text-[#1F3D26]/60">IVA 19%</span><span>{clp(f.iva)}</span></div>
-                      <div className="flex justify-between font-bold"><span>Total c/IVA</span><span>{clp(f.total)}</span></div>
+                      <div className="flex justify-between font-bold"><span>Total (mano de obra + gastos)</span><span>{clp(f.total)}</span></div>
                     </div>
                   ))}
                 {!facturacion.length && <p className="text-xs text-[#1F3D26]/40">Sin registros de facturación.</p>}
