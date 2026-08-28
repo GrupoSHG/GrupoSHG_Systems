@@ -216,3 +216,53 @@ export async function fetchDetalleAsistenciaCentro(centroCostoId) {
     trabajadores: agrupado[fecha],
   }));
 }
+export async function fetchAsistenciaPorPersona() {
+  // 1. Traemos a todas las personas activas
+  const { data: personasData, error: errPersonas } = await db
+    .from("personas")
+    .select("id, nombre")
+    .eq("activo", true)
+    .order("nombre");
+    
+  if (errPersonas) throw errPersonas;
+
+  // 2. Traemos toda la asistencia marcada como presente cruzando con el nombre del centro
+  const { data: asistenciaData, error: errAsistencia } = await db
+    .from("asistencia")
+    .select(`
+      persona_id,
+      centros_costo ( nombre )
+    `)
+    .eq("presente", true);
+    
+  if (errAsistencia) throw errAsistencia;
+
+  // 3. Agrupamos y contamos cuántos días ha trabajado cada persona en cada centro
+  const resultado = personasData.map((persona) => {
+    // Filtramos solo la asistencia de esta persona en específico
+    const susAsistencias = asistenciaData.filter(a => a.persona_id === persona.id);
+    
+    // Contamos por proyecto/centro
+    const conteoPorCentro = {};
+    susAsistencias.forEach(a => {
+      const nombreCentro = a.centros_costo?.nombre || 'Desconocido';
+      if (!conteoPorCentro[nombreCentro]) conteoPorCentro[nombreCentro] = 0;
+      conteoPorCentro[nombreCentro]++;
+    });
+
+    // Convertimos el objeto en un array para que React lo pueda renderizar
+    const centrosFormateados = Object.keys(conteoPorCentro).map(nombre => ({
+      centro: nombre,
+      dias: conteoPorCentro[nombre]
+    }));
+
+    return {
+      personaId: persona.id,
+      nombre: persona.nombre,
+      totalDias: susAsistencias.length,
+      centros: centrosFormateados
+    };
+  });
+
+  return resultado;
+}
