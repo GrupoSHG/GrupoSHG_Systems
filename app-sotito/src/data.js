@@ -188,29 +188,42 @@ export async function eliminarFactura(id, fotoUrl) {
   if (error) throw error;
 }
 export async function fetchDetalleAsistenciaCentro(centroCostoId) {
-  const { data, error } = await db
+  // 1. Traemos a todas las personas para poder cruzar los nombres
+  const { data: personasData, error: errPersonas } = await db
+    .from("personas")
+    .select("id, nombre");
+
+  if (errPersonas) throw errPersonas;
+
+  // Creamos un diccionario para buscar rápido el nombre por ID
+  const personasMap = {};
+  if (personasData) {
+    personasData.forEach(p => {
+      personasMap[p.id] = p.nombre;
+    });
+  }
+
+  // 2. Traemos la asistencia de este centro sin pedirle el JOIN a Supabase
+  const { data: asistenciaData, error: errAsistencia } = await db
     .from("asistencia")
-    .select(`
-      fecha,
-      personas ( nombre )
-    `)
+    .select("fecha, persona_id")
     .eq("centro_costo_id", centroCostoId)
     .eq("presente", true)
     .order("fecha", { ascending: false });
 
-  if (error) throw error;
+  if (errAsistencia) throw errAsistencia;
 
-  // Agrupar los resultados por fecha
-  const agrupado = data.reduce((acc, row) => {
+  // 3. Agrupamos por fecha y cruzamos el nombre en memoria
+  const agrupado = asistenciaData.reduce((acc, row) => {
     const fecha = row.fecha;
-    const nombrePersona = row.personas?.nombre || 'Trabajador desconocido';
+    const nombrePersona = personasMap[row.persona_id] || 'Trabajador desconocido';
     
     if (!acc[fecha]) acc[fecha] = [];
     acc[fecha].push(nombrePersona);
     return acc;
   }, {});
 
-  // Convertir el objeto agrupado a un arreglo para recorrerlo en React
+  // 4. Convertimos el objeto en un arreglo para que React lo pueda renderizar
   return Object.keys(agrupado).map((fecha) => ({
     fecha,
     trabajadores: agrupado[fecha],
@@ -226,18 +239,30 @@ export async function fetchAsistenciaPorPersona() {
     
   if (errPersonas) throw errPersonas;
 
-  // 2. Traemos toda la asistencia marcada como presente cruzando con el nombre del centro
+  // 2. Traemos todos los centros de costo para cruzar los nombres
+  const { data: centrosData, error: errCentros } = await db
+    .from("centros_costo")
+    .select("id, nombre");
+    
+  if (errCentros) throw errCentros;
+
+  // Creamos un diccionario (mapa) para buscar rápido el nombre del centro por su ID
+  const centrosMap = {};
+  if (centrosData) {
+    centrosData.forEach(c => {
+      centrosMap[c.id] = c.nombre;
+    });
+  }
+
+  // 3. Traemos la asistencia (esta vez sin pedir que Supabase haga el cruce con centros_costo)
   const { data: asistenciaData, error: errAsistencia } = await db
     .from("asistencia")
-    .select(`
-      persona_id,
-      centros_costo ( nombre )
-    `)
+    .select("persona_id, centro_costo_id")
     .eq("presente", true);
     
   if (errAsistencia) throw errAsistencia;
 
-  // 3. Agrupamos y contamos cuántos días ha trabajado cada persona en cada centro
+  // 4. Agrupamos y contamos cruzando los datos en memoria
   const resultado = personasData.map((persona) => {
     // Filtramos solo la asistencia de esta persona en específico
     const susAsistencias = asistenciaData.filter(a => a.persona_id === persona.id);
@@ -245,7 +270,8 @@ export async function fetchAsistenciaPorPersona() {
     // Contamos por proyecto/centro
     const conteoPorCentro = {};
     susAsistencias.forEach(a => {
-      const nombreCentro = a.centros_costo?.nombre || 'Desconocido';
+      // Usamos el ID para buscar el nombre en nuestro diccionario
+      const nombreCentro = centrosMap[a.centro_costo_id] || 'Desconocido';
       if (!conteoPorCentro[nombreCentro]) conteoPorCentro[nombreCentro] = 0;
       conteoPorCentro[nombreCentro]++;
     });
