@@ -48,7 +48,7 @@ export default function App() {
   const [gastos, setGastos] = useState([]);
 
   const [ocrEstado, setOcrEstado] = useState(null);
-  const [fecha, setFecha] = useState(hoy()); // Convertido a estado para poder cambiar de día
+  const [fecha, setFecha] = useState(hoy());
 
   // Carga inicial: centros de costo y personas activas
   useEffect(() => {
@@ -94,7 +94,7 @@ export default function App() {
 
   const centroActivo = centros.find((c) => c.id === centroId);
 
-  const [guardadoAsistencia, setGuardadoAsistencia] = useState({}); // personaId -> 'guardando' | 'guardado' | null
+  const [guardadoAsistencia, setGuardadoAsistencia] = useState({});
 
   const togglePresente = async (personaId) => {
     const nuevoValor = !asistencia[personaId];
@@ -109,7 +109,6 @@ export default function App() {
     } catch (e) {
       setError(e.message);
       setGuardadoAsistencia((s) => ({ ...s, [personaId]: null }));
-      // revertir el cambio optimista si falló el guardado
       setAsistencia((s) => ({ ...s, [personaId]: !nuevoValor }));
     }
   };
@@ -126,14 +125,13 @@ export default function App() {
     try {
       await subirFactura(centroId, file);
       setOcrEstado(null);
-      recargarCentro(centroId); // refresca la galería para que se vea la foto nueva
+      recargarCentro(centroId);
     } catch (e2) {
       setError(e2.message);
       setOcrEstado(null);
     }
   };
 
-  // Consulta cada 2s hasta que la Edge Function termine de procesar (máx. 30s)
   const pollFactura = (facturaId, intentos = 0) => {
     setTimeout(async () => {
       try {
@@ -163,7 +161,7 @@ export default function App() {
         fecha: facturaLeida.fecha || fecha,
         descripcion: `Factura — ${facturaLeida.proveedor || "sin proveedor"}`,
         monto: facturaLeida.monto || 0,
-        categoria: "Materiales",
+        categoria: facturaLeida.categoria || "Materiales", // Actualizado para usar la categoría seleccionada
         facturaId: facturaLeida.id,
       });
       setFacturaLeida(null);
@@ -193,8 +191,6 @@ export default function App() {
     }
   };
 
-  // Reconfirma en Supabase la asistencia de todos los trabajadores tal como
-  // está marcada en pantalla, y refresca todo desde la base de datos.
   const guardarTodo = async () => {
     setGuardandoTodo(true);
     try {
@@ -367,8 +363,13 @@ export default function App() {
                 {!ocrEstado && (
                   <label className="w-full border-2 border-dashed border-[#1F3D26]/40 py-6 flex flex-col items-center gap-2 text-[#1F3D26]/60 hover:border-[#4C9A2A] hover:text-[#1F3D26] transition-colors cursor-pointer">
                     <Camera size={22} />
-                    <span className="text-xs font-semibold uppercase tracking-wide">Tomar foto de la factura</span>
-                    <input type="file" accept="image/*" capture="environment" className="hidden" onChange={onSeleccionarFoto} />
+                    <span className="text-xs font-semibold uppercase tracking-wide">Subir foto o documento (PDF)</span>
+                    <input 
+                      type="file" 
+                      accept="image/*, application/pdf" 
+                      className="hidden" 
+                      onChange={onSeleccionarFoto} 
+                    />
                   </label>
                 )}
                 {ocrEstado === "leyendo" && (
@@ -441,25 +442,35 @@ export default function App() {
               {!!facturasSubidas.length && (
                 <div className="border-t-2 border-[#1F3D26] p-3">
                   <p className="text-[10px] uppercase tracking-wide text-[#1F3D26]/50 font-mono mb-2">
-                    Fotos subidas de este centro ({facturasSubidas.length})
+                    Archivos subidos de este centro ({facturasSubidas.length})
                   </p>
                   <div className="grid grid-cols-3 gap-2">
-                    {facturasSubidas.map((f) => (
-                      <a key={f.id} href={f.foto_url} target="_blank" rel="noreferrer" className="relative block border-2 border-[#1F3D26]">
-                        <img src={f.foto_url} alt={f.proveedor || "Factura"} className="w-full h-20 object-cover" />
-                        <span
-                          className={`absolute bottom-0 left-0 right-0 text-[8px] font-mono uppercase text-center py-0.5 ${
-                            f.estado_ocr === "leida"
-                              ? "bg-[#4C9A2A] text-[#1F3D26]"
-                              : f.estado_ocr === "error"
-                              ? "bg-red-600 text-white"
-                              : "bg-[#1F3D26]/70 text-white"
-                          }`}
-                        >
-                          {f.estado_ocr}
-                        </span>
-                      </a>
-                    ))}
+                    {facturasSubidas.map((f) => {
+                      const esPdf = f.foto_url?.toLowerCase().includes('.pdf');
+                      
+                      return (
+                        <a key={f.id} href={f.foto_url} target="_blank" rel="noreferrer" className="relative block border-2 border-[#1F3D26] h-20 bg-[#EFF6EE]">
+                          {esPdf ? (
+                            <div className="w-full h-full flex items-center justify-center text-[#1F3D26]">
+                              <span className="text-sm font-bold font-mono">PDF</span>
+                            </div>
+                          ) : (
+                            <img src={f.foto_url} alt={f.proveedor || "Factura"} className="w-full h-full object-cover" />
+                          )}
+                          <span
+                            className={`absolute bottom-0 left-0 right-0 text-[8px] font-mono uppercase text-center py-0.5 ${
+                              f.estado_ocr === "leida" || f.estado_ocr === "confirmada"
+                                ? "bg-[#4C9A2A] text-[#1F3D26]"
+                                : f.estado_ocr === "error"
+                                ? "bg-red-600 text-white"
+                                : "bg-[#1F3D26]/70 text-white"
+                            }`}
+                          >
+                            {f.estado_ocr}
+                          </span>
+                        </a>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -752,6 +763,7 @@ function FormGastoManual({ onAgregar }) {
           <option>Transporte</option>
           <option>Materiales</option>
           <option>Alimentación</option>
+          <option>Palet</option>
           <option>Otros</option>
         </select>
       </div>
