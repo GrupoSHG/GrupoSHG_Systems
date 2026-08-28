@@ -233,7 +233,7 @@ export default function App() {
         <div className="max-w-lg mx-auto flex items-center justify-between">
           <div>
             <p className="text-[10px] tracking-[0.25em] uppercase text-[#4C9A2A] font-semibold">Control diario</p>
-            <h1 className="text-xl font-bold tracking-tight">App Sotito</h1>
+            <h1 className="text-xl font-bold tracking-tight">App Construccion CyS</h1>
           </div>
           <div className="text-right flex flex-col items-end">
             <p className="text-[10px] uppercase tracking-wider text-[#EAF2E9]/60">Fecha</p>
