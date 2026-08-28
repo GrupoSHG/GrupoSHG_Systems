@@ -19,6 +19,7 @@ import {
 import ResumenGeneral from "./ResumenGeneral";
 import AsistenciaPorPersona from "./AsistenciaPorPersona";
 import AsistenciaPorCentro from "./AsistenciaPorCentro";
+import DesgloseGastosPeriodo from "./DesgloseGastosPeriodo";
 
 const clp = (n) => (n ?? 0).toLocaleString("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 });
 const hoy = () => new Date().toISOString().slice(0, 10);
@@ -44,6 +45,7 @@ export default function App() {
   const [guardandoTodo, setGuardandoTodo] = useState(false);
   const [mostrarNuevoCentro, setMostrarNuevoCentro] = useState(false);
   const [mesFiltro, setMesFiltro] = useState("todos");
+  const [detalleAbierto, setDetalleAbierto] = useState(null);
   const [asistencia, setAsistencia] = useState({});
   const [gastos, setGastos] = useState([]);
 
@@ -591,7 +593,26 @@ export default function App() {
                       </div>
                       <div className="flex justify-between"><span className="text-[#1F3D26]/60">Mano de obra</span><span>{clp(f.mano_obra)}</span></div>
                       <div className="flex justify-between"><span className="text-[#1F3D26]/60">Gastos netos</span><span>{clp(f.gastos_netos)}</span></div>
+                      <DesgloseGastosPeriodo centroId={centroId} fechaInicio={f.periodo_inicio} fechaFin={f.periodo_fin} />
                       <div className="flex justify-between font-bold"><span>Total (mano de obra + gastos)</span><span>{clp(f.total)}</span></div>
+
+                      <button
+                        onClick={() => setDetalleAbierto(detalleAbierto === f.id ? null : f.id)}
+                        className="mt-2 text-[11px] uppercase tracking-wide text-[#4C9A2A] font-semibold flex items-center gap-1"
+                      >
+                        <ChevronRight size={12} className={detalleAbierto === f.id ? "rotate-90" : ""} />
+                        {detalleAbierto === f.id ? "Ocultar detalle (respaldo)" : "Ver detalle — quién trabajó cada día"}
+                      </button>
+                      {detalleAbierto === f.id && (
+                        <div className="mt-2 bg-[#EFF6EE] border border-[#1F3D26]/20 p-2.5">
+                          <AsistenciaPorCentro
+                            centroId={centroId}
+                            fechaInicio={f.periodo_inicio}
+                            fechaFin={f.periodo_fin}
+                            compacto
+                          />
+                        </div>
+                      )}
                     </div>
                   ))}
                 {!facturacion.length && <p className="text-xs text-[#1F3D26]/40">Sin registros de facturación.</p>}

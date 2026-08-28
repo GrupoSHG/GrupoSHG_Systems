@@ -187,7 +187,7 @@ export async function eliminarFactura(id, fotoUrl) {
   const { error } = await db.from("facturas").delete().eq("id", id);
   if (error) throw error;
 }
-export async function fetchDetalleAsistenciaCentro(centroCostoId) {
+export async function fetchDetalleAsistenciaCentro(centroCostoId, fechaInicio, fechaFin) {
   // 1. Traemos a todas las personas para poder cruzar los nombres
   const { data: personasData, error: errPersonas } = await db
     .from("personas")
@@ -204,12 +204,19 @@ export async function fetchDetalleAsistenciaCentro(centroCostoId) {
   }
 
   // 2. Traemos la asistencia de este centro sin pedirle el JOIN a Supabase
-  const { data: asistenciaData, error: errAsistencia } = await db
+  //    (opcionalmente acotada a un rango de fechas — ej. el período exacto
+  //    de una factura, para poder justificar el monto con el detalle real)
+  let query = db
     .from("asistencia")
     .select("fecha, persona_id")
     .eq("centro_costo_id", centroCostoId)
     .eq("presente", true)
     .order("fecha", { ascending: false });
+
+  if (fechaInicio) query = query.gte("fecha", fechaInicio);
+  if (fechaFin) query = query.lte("fecha", fechaFin);
+
+  const { data: asistenciaData, error: errAsistencia } = await query;
 
   if (errAsistencia) throw errAsistencia;
 
@@ -291,4 +298,25 @@ export async function fetchAsistenciaPorPersona() {
   });
 
   return resultado;
+}
+
+// ---- Desglose de gastos por categoría, acotado a un período exacto ----
+// (para mostrar Materiales / Petróleo / Otros junto al total de cada
+// período de facturación de un CD, no solo el monto agregado)
+export async function fetchGastosPorCategoriaPeriodo(centroCostoId, fechaInicio, fechaFin) {
+  const { data, error } = await db
+    .from("gastos")
+    .select("monto, categoria")
+    .eq("centro_costo_id", centroCostoId)
+    .gte("fecha", fechaInicio)
+    .lte("fecha", fechaFin);
+
+  if (error) throw error;
+
+  const totales = { Materiales: 0, Petroleo: 0, Otros: 0 };
+  (data || []).forEach((g) => {
+    const cat = totales.hasOwnProperty(g.categoria) ? g.categoria : "Otros";
+    totales[cat] += Number(g.monto || 0);
+  });
+  return totales;
 }
