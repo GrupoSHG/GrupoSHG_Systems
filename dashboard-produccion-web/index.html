@@ -226,6 +226,7 @@ function App() {
   const [produccionDiaria, setProduccionDiaria] = useState({ meta:1000, datos:[] });
   const [inventario,       setInventario]       = useState({ acero:[], pol:[], kpiAcero:{}, kpiPol:{} });
   const [m2Ayer,           setM2Ayer]           = useState({ total:0, fecha:'' });
+  const [m2Mensual,        setM2Mensual]        = useState({ totalMesActual:0, mesActualNombre:'', serie:[] });
   const [wipAcero,         setWipAcero]         = useState({ items:[] });
   const [frecuenciaAcero,  setFrecuenciaAcero]  = useState(30);
   const [diasLlegada,      setDiasLlegada]      = useState(() => {
@@ -271,6 +272,10 @@ function App() {
     google.script.run.withSuccessHandler(res => {
       if (res && !res.error) setM2Ayer(res);
     }).getM2Ayer();
+
+    google.script.run.withSuccessHandler(res => {
+      if (res && !res.error) setM2Mensual(res);
+    }).getM2MensualesPA();
 
     google.script.run.withSuccessHandler(res => {
       if (res && res.error) setSysError("Error WIP Acero: "+res.error);
@@ -547,6 +552,50 @@ function App() {
       <>
         <div className="section-title">&gt; PRODUCCION_DIARIA_DEL_MES</div>
         {!(produccionDiaria?.datos?.length>0)&&<div style={{color:'var(--coral)',marginBottom:10,fontSize:11,fontWeight:'bold'}}>⚠️ Datos de prueba. Publica nueva versión en Apps Script.</div>}
+        <div className="card" style={{height:350,padding:'20px 22px 10px 10px',marginBottom:30}}>
+          <div style={{position:'relative',height:'100%',width:'100%'}}><canvas ref={ref}></canvas></div>
+        </div>
+      </>
+    );
+  };
+
+  const GraficoMensual = () => {
+    const ref=useRef(null), ch=useRef(null);
+    useEffect(()=>{
+      if(!ref.current||!window.Chart) return;
+      const ok=m2Mensual?.serie?.length>0;
+      const labels=ok?m2Mensual.serie.map(d=>d.mes+' '+String(d.anio).slice(2)):['Feb','Mar','Abr','May','Jun','Jul'];
+      const vals  =ok?m2Mensual.serie.map(d=>d.m2):[18500,21200,19800,22100,20500,19000];
+      const dataLabelsPlugin={id:'dataLabelsMensual',afterDatasetsDraw:(c)=>{
+        const{ctx}=c;
+        c.data.datasets.forEach((ds,di)=>{
+          const meta=c.getDatasetMeta(di);
+          meta.data.forEach((point,i)=>{
+            const val=ds.data[i];
+            if(val===null||val===undefined) return;
+            ctx.save();
+            ctx.font='700 10px Helvetica Neue, Helvetica, sans-serif';
+            ctx.fillStyle='#3B82F6';
+            ctx.textAlign='center';
+            ctx.textBaseline='bottom';
+            ctx.fillText(Math.round(val).toLocaleString('es-CL'), point.x, point.y-8);
+            ctx.restore();
+          });
+        });
+      }};
+      if(ch.current) ch.current.destroy();
+      ch.current=new window.Chart(ref.current,{
+        type:'line',plugins:[dataLabelsPlugin],
+        data:{labels,datasets:[{data:vals,borderColor:'#3B82F6',backgroundColor:'rgba(59,130,246,0.1)',fill:true,tension:0.4,pointRadius:4,pointBackgroundColor:'#fff',pointBorderColor:'#3B82F6',pointBorderWidth:2}]},
+        options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:20}},plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.parsed.y.toLocaleString('es-CL')+' m²'}}},
+          scales:{x:{grid:{display:false},ticks:{color:'var(--text-3)',font:{size:11}}},y:{min:0,grid:{color:'var(--border-2)'},ticks:{color:'var(--text-3)',font:{size:11}}}},animation:{duration:800}}
+      });
+      return ()=>{if(ch.current) ch.current.destroy();};
+    },[m2Mensual]);
+    return (
+      <>
+        <div className="section-title">&gt; PRODUCCION_MENSUAL_DESDE_FEBRERO</div>
+        {!(m2Mensual?.serie?.length>0)&&<div style={{color:'var(--coral)',marginBottom:10,fontSize:11,fontWeight:'bold'}}>⚠️ Datos de prueba. Publica nueva versión en Apps Script.</div>}
         <div className="card" style={{height:350,padding:'20px 22px 10px 10px',marginBottom:30}}>
           <div style={{position:'relative',height:'100%',width:'100%'}}><canvas ref={ref}></canvas></div>
         </div>
@@ -1130,6 +1179,7 @@ function App() {
 
       {renderPlan()}
       <GraficoDiario />
+      <GraficoMensual />
 
       <div className="section-title">WIP: Trabajo en Proceso (Planta)</div>
       <WipTable title="Planchas Con Aislación (PA) — Pendientes"  data={wip.conAislacion} />
