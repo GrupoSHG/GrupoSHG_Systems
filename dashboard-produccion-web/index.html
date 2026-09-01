@@ -224,7 +224,7 @@ function App() {
   const [rend,             setRend]             = useState({ rows:[], hoursElapsed:0, shiftStart:'', now:'' });
   const [sysError,         setSysError]         = useState(null);
   const [produccionDiaria, setProduccionDiaria] = useState({ meta:1000, datos:[] });
-  const [inventario,       setInventario]       = useState({ acero:[], pol:[], kpiAcero:{}, kpiPol:{} });
+  const [inventario,       setInventario]       = useState({ acero:[], pol:[], kpiAcero:{}, kpiPol:{}, proveedoresAcero:[] });
   const [m2Ayer,           setM2Ayer]           = useState({ total:0, fecha:'' });
   const [m2Mensual,        setM2Mensual]        = useState({ totalMesActual:0, mesActualNombre:'', serie:[] });
   const [wipAcero,         setWipAcero]         = useState({ items:[] });
@@ -603,7 +603,8 @@ function App() {
     );
   };
 
-  const renderInv = (label, rows, kpi, color) => {
+  const renderInv = (label, rows, kpi, color, proveedores) => {
+    proveedores = proveedores || [];
     if(!rows||rows.length===0) return <div style={{color:'var(--text-3)',fontSize:12,padding:'12px 0',marginBottom:24}}>Sin datos para {label}.</div>;
     const f=n=>(n||0).toLocaleString('es-CL',{maximumFractionDigits:1});
     return (
@@ -639,6 +640,9 @@ function App() {
                 <th style={{paddingLeft:22,width:140}}>Código</th><th>Descripción</th>
                 <th style={{textAlign:'right'}}>Stk. Físico</th><th style={{textAlign:'right'}}>Por Entregar</th>
                 <th style={{textAlign:'right'}}>Disponible</th><th style={{textAlign:'right'}}>Por Llegar</th>
+                {proveedores.map(p=>(
+                  <th key={p} style={{textAlign:'right',fontSize:10,whiteSpace:'nowrap'}} title={p}>{p}</th>
+                ))}
                 <th style={{textAlign:'right'}}>Disp. Futuro</th>
               </tr></thead>
               <tbody>
@@ -652,6 +656,14 @@ function App() {
                       <td style={{textAlign:'right',fontFamily:'monospace',color:r.por_entregar>0?'var(--coral)':'var(--text-3)'}}>{f(r.por_entregar)}</td>
                       <td style={{textAlign:'right',fontFamily:'monospace',fontWeight:dn?700:400,color:dn?'var(--coral)':'var(--purp)',background:dn?'#FEE2E2':'transparent'}}>{f(r.disponible)}</td>
                       <td style={{textAlign:'right',fontFamily:'monospace',color:'var(--text-3)'}}>{f(r.por_llegar)}</td>
+                      {proveedores.map(p=>{
+                        const cant=(r.porProveedor&&r.porProveedor[p])||0;
+                        return (
+                          <td key={p} style={{textAlign:'right',fontFamily:'monospace',fontSize:11,color:cant>0?'#2563EB':'var(--text-3)',fontWeight:cant>0?600:400}}>
+                            {cant>0?f(cant):'—'}
+                          </td>
+                        );
+                      })}
                       <td style={{textAlign:'right',fontFamily:'monospace',fontWeight:fn?700:400,color:fn?'#D97706':'var(--text-2)'}}>{f(r.disp_futuro)}</td>
                     </tr>
                   );
@@ -1199,7 +1211,7 @@ function App() {
         Inventario de Insumos · Aceros
         {inventario.kpiAcero?.dispNeg>0&&<span style={{background:'#FEE2E2',color:'var(--coral)',fontWeight:700,fontSize:10,padding:'3px 10px',borderRadius:8}}>⚠ {inventario.kpiAcero.dispNeg} ítems negativos</span>}
       </div>
-      {renderInv("Aceros — Stock detallado", inventario.acero, inventario.kpiAcero||{}, 'var(--acero)')}
+      {renderInv("Aceros — Stock detallado", inventario.acero, inventario.kpiAcero||{}, 'var(--acero)', inventario.proveedoresAcero||[])}
 
       <div className="section-title">
         Inventario de Insumos · Poliestireno
