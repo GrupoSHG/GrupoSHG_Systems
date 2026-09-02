@@ -225,6 +225,8 @@ function App() {
   const [sysError,         setSysError]         = useState(null);
   const [produccionDiaria, setProduccionDiaria] = useState({ meta:1000, datos:[] });
   const [inventario,       setInventario]       = useState({ acero:[], pol:[], kpiAcero:{}, kpiPol:{}, proveedoresAcero:[] });
+  const [mostrarProvInv,   setMostrarProvInv]    = useState(true);
+  const [mostrarProvWip,   setMostrarProvWip]    = useState(true);
   const [m2Ayer,           setM2Ayer]           = useState({ total:0, fecha:'' });
   const [m2Mensual,        setM2Mensual]        = useState({ totalMesActual:0, mesActualNombre:'', serie:[] });
   const [wipAcero,         setWipAcero]         = useState({ items:[] });
@@ -630,9 +632,16 @@ function App() {
           </div>
         </div>
         <div className="card" style={{padding:0,overflow:'hidden',marginBottom:30}}>
-          <div style={{padding:'14px 22px',borderBottom:'1px solid var(--border)',background:'var(--surface-2)',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <div style={{padding:'14px 22px',borderBottom:'1px solid var(--border)',background:'var(--surface-2)',display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:10}}>
             <b style={{fontSize:13}}>{label}</b>
-            <span style={{fontSize:11,color:'var(--text-3)'}}>{kpi.conStock||0} con stock · <span style={{color:'var(--coral)',fontWeight:700}}>{kpi.sinStock||0} sin stock</span></span>
+            <div style={{display:'flex',alignItems:'center',gap:12}}>
+              {proveedores.length>0 &&
+                <button onClick={()=>setMostrarProvInv(v=>!v)} style={{fontSize:10,fontWeight:700,padding:'4px 10px',borderRadius:6,border:'1px solid var(--border-2)',background:mostrarProvInv?'var(--surface)':'#EFF6FF',color:mostrarProvInv?'var(--text-2)':'#2563EB',cursor:'pointer'}}>
+                  {mostrarProvInv ? '◀ Ocultar proveedores' : `▶ Ver proveedores (${proveedores.length})`}
+                </button>
+              }
+              <span style={{fontSize:11,color:'var(--text-3)'}}>{kpi.conStock||0} con stock · <span style={{color:'var(--coral)',fontWeight:700}}>{kpi.sinStock||0} sin stock</span></span>
+            </div>
           </div>
           <div style={{maxHeight:420,overflowY:'auto'}}>
             <table>
@@ -640,7 +649,7 @@ function App() {
                 <th style={{paddingLeft:22,width:140}}>Código</th><th>Descripción</th>
                 <th style={{textAlign:'right'}}>Stk. Físico</th><th style={{textAlign:'right'}}>Por Entregar</th>
                 <th style={{textAlign:'right'}}>Disponible</th><th style={{textAlign:'right'}}>Por Llegar</th>
-                {proveedores.map(p=>(
+                {mostrarProvInv && proveedores.map(p=>(
                   <th key={p} style={{textAlign:'right',fontSize:10,whiteSpace:'nowrap'}} title={p}>{p}</th>
                 ))}
                 <th style={{textAlign:'right'}}>Disp. Futuro</th>
@@ -656,7 +665,7 @@ function App() {
                       <td style={{textAlign:'right',fontFamily:'monospace',color:r.por_entregar>0?'var(--coral)':'var(--text-3)'}}>{f(r.por_entregar)}</td>
                       <td style={{textAlign:'right',fontFamily:'monospace',fontWeight:dn?700:400,color:dn?'var(--coral)':'var(--purp)',background:dn?'#FEE2E2':'transparent'}}>{f(r.disponible)}</td>
                       <td style={{textAlign:'right',fontFamily:'monospace',color:'var(--text-3)'}}>{f(r.por_llegar)}</td>
-                      {proveedores.map(p=>{
+                      {mostrarProvInv && proveedores.map(p=>{
                         const cant=(r.porProveedor&&r.porProveedor[p])||0;
                         return (
                           <td key={p} style={{textAlign:'right',fontFamily:'monospace',fontSize:11,color:cant>0?'#2563EB':'var(--text-3)',fontWeight:cant>0?600:400}}>
@@ -749,6 +758,11 @@ function App() {
                 {diasLlegada > 0 && diasLlegada <= 30 && <span style={{fontSize:10, fontWeight:700, color:'#92400E', background:'#FEF3C7', padding:'2px 8px', borderRadius:6}}>⚡ Próxima llegada</span>}
               </div>
               <span style={{fontSize:11, color:'var(--text-3)'}}>Ordenado por consumo mensual</span>
+              {(wipAcero.proveedores||[]).length>0 &&
+                <button onClick={()=>setMostrarProvWip(v=>!v)} style={{fontSize:10,fontWeight:700,padding:'4px 10px',borderRadius:6,border:'1px solid var(--border-2)',background:mostrarProvWip?'var(--surface)':'#EFF6FF',color:mostrarProvWip?'var(--text-2)':'#2563EB',cursor:'pointer'}}>
+                  {mostrarProvWip ? '◀ Ocultar proveedores' : `▶ Ver proveedores (${(wipAcero.proveedores||[]).length})`}
+                </button>
+              }
             </div>
           </div>
           <div style={{maxHeight:460, overflowY:'auto'}}>
@@ -763,7 +777,7 @@ function App() {
                   <th style={{textAlign:'right'}}>Saldo (kg)</th>
                   <th style={{textAlign:'center', width:110}}>Quiebre Stock Actual</th>
                   <th style={{textAlign:'right'}}>Por Llegar (kg)</th>
-                  {(wipAcero.proveedores||[]).map(p=>(
+                  {mostrarProvWip && (wipAcero.proveedores||[]).map(p=>(
                     <th key={p} style={{textAlign:'right',fontSize:9.5,whiteSpace:'nowrap'}} title={p}>{p}</th>
                   ))}
                   <th style={{textAlign:'center', width:110}}>Quiebre c/ Importación</th>
@@ -838,7 +852,7 @@ function App() {
                       <td style={{textAlign:'right', fontFamily:'monospace', color:(r.por_llegar||0)>0?'#2563EB':'var(--text-3)', fontWeight:(r.por_llegar||0)>0?600:400}}>
                         {(r.por_llegar||0)>0 ? r.por_llegar.toLocaleString('es-CL',{maximumFractionDigits:1}) : '—'}
                       </td>
-                      {(wipAcero.proveedores||[]).map(p=>{
+                      {mostrarProvWip && (wipAcero.proveedores||[]).map(p=>{
                         const cant=(r.porProveedor&&r.porProveedor[p])||0;
                         return (
                           <td key={p} style={{textAlign:'right', fontFamily:'monospace', fontSize:10.5, color:cant>0?'#2563EB':'var(--text-3)', fontWeight:cant>0?600:400}}>
