@@ -763,6 +763,9 @@ function App() {
                   <th style={{textAlign:'right'}}>Saldo (kg)</th>
                   <th style={{textAlign:'center', width:110}}>Quiebre Stock Actual</th>
                   <th style={{textAlign:'right'}}>Por Llegar (kg)</th>
+                  {(wipAcero.proveedores||[]).map(p=>(
+                    <th key={p} style={{textAlign:'right',fontSize:9.5,whiteSpace:'nowrap'}} title={p}>{p}</th>
+                  ))}
                   <th style={{textAlign:'center', width:110}}>Quiebre c/ Importación</th>
                   <th style={{textAlign:'center', width:120}}>⚠ Comprar antes de</th>
                   <th style={{textAlign:'center', width:80}}>Estado</th>
@@ -835,6 +838,14 @@ function App() {
                       <td style={{textAlign:'right', fontFamily:'monospace', color:(r.por_llegar||0)>0?'#2563EB':'var(--text-3)', fontWeight:(r.por_llegar||0)>0?600:400}}>
                         {(r.por_llegar||0)>0 ? r.por_llegar.toLocaleString('es-CL',{maximumFractionDigits:1}) : '—'}
                       </td>
+                      {(wipAcero.proveedores||[]).map(p=>{
+                        const cant=(r.porProveedor&&r.porProveedor[p])||0;
+                        return (
+                          <td key={p} style={{textAlign:'right', fontFamily:'monospace', fontSize:10.5, color:cant>0?'#2563EB':'var(--text-3)', fontWeight:cant>0?600:400}}>
+                            {cant>0?cant.toLocaleString('es-CL',{maximumFractionDigits:1}):'—'}
+                          </td>
+                        );
+                      })}
                       <td style={{textAlign:'center'}} title={tooltipImport}>
                         <span style={{display:'inline-block', padding:'2px 8px', borderRadius:6, fontSize:10, fontWeight:700, background:bgTotal, color:txTotal, whiteSpace:'nowrap'}}>
                           {labelTotal}

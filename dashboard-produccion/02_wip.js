@@ -1,6 +1,8 @@
 function getWipData() {
   try {
-    // Supabase: tabla 'ordenes_de_produccion' (antes leía el Sheet "Orden de Produccion")
+    // Supabase: tabla 'ordenes_de_produccion' (antes leía el Sheet
+    // "Orden de Produccion" directo). Mismo patrón que en toda la
+    // migración de dashboard-produccion.
     const filas = supabaseSelect_('ordenes_de_produccion');
 
     const hoy        = new Date();
@@ -26,9 +28,8 @@ function getWipData() {
 
       if (pend > 0 || term > 0) {
         // OJO: revestimiento, espesor, largo y cliente no existen en la tabla
-        // 'ordenes_de_produccion' de Supabase (tampoco existían realmente en
-        // el Sheet — la consulta SQL nunca los trajo, por eso ya mostraban
-        // "-" antes también). Se mantienen como "-" por consistencia.
+        // 'ordenes_de_produccion' de Supabase (tampoco existían en el Sheet
+        // — la consulta SQL nunca los trajo).
         const item = {
           nv:            row.nota_vta        !== undefined ? row.nota_vta        : "-",
           op:            row.num_op          !== undefined ? row.num_op          : "-",
@@ -109,9 +110,6 @@ function getWipAcero() {
     });
 
     // Supabase: tabla 'aceros' (antes leía el Sheet "Aceros")
-    // OJO: los nombres de columna cambiaron respecto al Sheet viejo —
-    // ya no es "consumo_mes" sino 'promedio_cantidad_mensual', y el nombre
-    // del acero es 'producto' en vez de una columna llamada "Acero".
     const filasAceros = supabaseSelect_('aceros');
     const consumoMap = {};
     filasAceros.forEach(function(row) {
@@ -122,6 +120,24 @@ function getWipAcero() {
         consumo_mes_kg: parseFloat(row.promedio_cantidad_mensual) || 0,
       };
     });
+
+    // Supabase: tabla 'por_llegar_aceros_proveedor' (nueva) — formato
+    // largo, una fila por (acero, proveedor). Se arma un mapa
+    // acero -> {proveedor: cantidad} y la lista de proveedores distintos
+    // (dinámica, no fija en el código).
+    const filasProveedor = supabaseSelect_('por_llegar_aceros_proveedor');
+    const porLlegarPorAcero = {};
+    const proveedoresSet = {};
+    filasProveedor.forEach(function(row) {
+      const cod       = (row.codigo_acero || '').toString().trim().toUpperCase();
+      const proveedor = row.proveedor || "Proveedor sin nombre";
+      const cantidad  = parseFloat(row.cantidad_pendiente) || 0;
+      if (!cod || cantidad <= 0) return;
+      if (!porLlegarPorAcero[cod]) porLlegarPorAcero[cod] = {};
+      porLlegarPorAcero[cod][proveedor] = (porLlegarPorAcero[cod][proveedor] || 0) + cantidad;
+      proveedoresSet[proveedor] = true;
+    });
+    const proveedoresOrdenados = Object.keys(proveedoresSet).sort();
 
     const hoy = new Date();
     const resultado = [];
@@ -160,11 +176,12 @@ function getWipAcero() {
         meses_restantes: meses_restantes,
         fecha_agotamiento: fecha_agotamiento,
         urgencia: urgencia,
+        porProveedor: porLlegarPorAcero[cod] || {},
       });
     }
 
     resultado.sort((a, b) => b.consumo_mes_kg - a.consumo_mes_kg);
-    return { items: resultado };
+    return { items: resultado, proveedores: proveedoresOrdenados };
   } catch(e) {
     return { error: "Error getWipAcero: " + e.toString() };
   }
