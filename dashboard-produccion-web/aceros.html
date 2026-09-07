@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Inventario de Aceros · Polchile</title>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  // AJUSTAR: URL /exec del deployment de Apps Script de dashboard-produccion
+  window.__SCRIPT_URL__ = 'https://script.google.com/macros/s/AKfycbxA_Iy0Zr4YOl6LFsN1oEq74Cb-0MVM0pS4Gs-3-X5GLtikCY1fKK4Y77ecjeU6pwd6/exec';
+</script>
+<script src="google-script-shim.js"></script>
+<style>
+  :root {
+    --bg: #F4F3EF; --surface: #FFFFFF; --surface-2: #EEECEA;
+    --text: #18181A; --text-2: #5C5B58; --text-3: #9A9894;
+    --border: rgba(0,0,0,0.07); --border-2: rgba(0,0,0,0.13);
+    --polp: #6B62D4; --purp: #16906A; --coral: #C94F28;
+    --warn-bg: #FDF0E3; --r: 10px; --rl: 14px;
+    --acero: #6366F1; --pol: #D97706;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Helvetica Neue", Helvetica, sans-serif; background: var(--bg); color: var(--text); font-size: 13px; line-height: 1.5; }
+  .main { padding: 32px 36px 60px; max-width: 1400px; margin: 0 auto; }
+  .flex { display: flex; } .between { justify-content: space-between; } .center-y { align-items: center; }
+  .mono { font-family: monospace; }
+  .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; border-bottom: 1px solid var(--border-2); padding-bottom: 18px; }
+  .page-title { font-size: 22px; font-weight: 500; }
+  .section-title { font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--text-3); display: flex; align-items: center; gap: 12px; width: 100%; margin: 32px 0 16px; }
+  .section-title::after { content: ''; flex: 1; height: 1px; background: var(--border-2); }
+  .kpi-grid { display: grid; gap: 16px; margin-bottom: 16px; }
+  .grid-4 { grid-template-columns: repeat(4,1fr); }
+  .grid-3 { grid-template-columns: repeat(3,1fr); }
+  .grid-2 { grid-template-columns: repeat(2,1fr); }
+  .kpi { background: var(--surface); border: 1px solid var(--border); border-radius: var(--rl); padding: 22px; box-shadow: 0 4px 12px rgba(0,0,0,0.03); display: flex; flex-direction: column; justify-content: space-between; }
+  .kpi-label { font-size: 10.5px; color: var(--text-3); text-transform: uppercase; font-weight: 600; margin-bottom: 8px; }
+  .kpi-value { font-size: 32px; font-weight: 600; letter-spacing: -0.02em; line-height: 1; display: flex; align-items: baseline; }
+  .kpi-unit { font-size: 14px; color: var(--text-3); margin-left: 6px; font-weight: 500; }
+  .kpi-sub { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border-2); font-size: 11px; color: var(--text-2); display: flex; justify-content: space-between; align-items: center; }
+  .kpi-sub b { font-weight: 600; }
+  .kpi-sub span { font-weight: 700; color: var(--purp); font-size: 12.5px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--rl); padding: 20px 22px; margin-bottom: 14px; }
+  .prensa-grid { display: grid; grid-template-columns: repeat(7,1fr); gap: 12px; margin-bottom: 30px; }
+  .prensa-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 16px; display: flex; flex-direction: column; }
+  .prensa-bar { height: 4px; background: var(--surface-2); border-radius: 2px; margin-top: 10px; overflow: hidden; }
+  .prensa-bar-fill { height: 100%; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-size: 9px; text-transform: uppercase; color: var(--text-3); padding: 10px 8px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--surface); z-index: 2; box-shadow: 0 1px 0 var(--border); }
+  td { padding: 10px 8px; border-bottom: 1px solid var(--border-2); font-size: 11px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 9px; font-weight: 700; text-transform: uppercase; }
+  .bodega-tag { font-size: 8.5px; color: var(--text-3); background: var(--surface-2); padding: 1px 6px; border-radius: 4px; margin-top: 4px; display: inline-block; }
+  .tweaks-btn { border: 1px solid var(--border); background: var(--surface); border-radius: 8px; padding: 8px 16px; cursor: pointer; font-size: 12px; }
+  .sys-error { background: var(--coral); color: white; padding: 12px 20px; border-radius: 8px; margin-bottom: 20px; font-weight: 600; display: flex; justify-content: space-between; }
+
+  .velo-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: var(--rl); padding: 28px 24px 22px; box-shadow: 0 4px 12px rgba(0,0,0,0.03); display: flex; flex-direction: column; align-items: center; }
+  .velo-label { font-size: 10.5px; color: var(--text-3); text-transform: uppercase; font-weight: 600; letter-spacing: 0.06em; margin-bottom: 6px; }
+  .velo-valor { font-size: 44px; font-weight: 700; letter-spacing: -0.03em; line-height: 1; margin-top: 2px; }
+  .velo-unit  { font-size: 16px; color: var(--text-3); font-weight: 500; margin-left: 5px; }
+  .velo-zona  { font-size: 12px; font-weight: 700; margin-top: 10px; padding: 4px 16px; border-radius: 20px; }
+  .velo-fecha { font-size: 11px; color: var(--text-3); margin-top: 6px; }
+  .zona-r { background:#FEE2E2; color:#B91C1C; }
+  .zona-a { background:#FEF3C7; color:#92400E; }
+  .zona-v { background:#DCFCE7; color:#15803D; }
+
+  .rend-grid { display: grid; grid-template-columns: repeat(7,1fr); gap: 10px; margin-bottom: 18px; }
+  .rend-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 12px 14px; }
+  .rend-name { font-size: 11px; font-weight: 700; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.06em; }
+  .rend-real { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; line-height: 1; }
+  .rend-unit { font-size: 10px; color: var(--text-3); margin-left: 3px; }
+  .rend-target { font-size: 10.5px; color: var(--text-3); white-space: nowrap; }
+  .rend-diff { font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 6px; margin-top: 6px; display: inline-block; }
+  .rend-diff.up { background:#DCFCE7; color:#15803D; }
+  .rend-diff.dn { background:#FEE2E2; color:#B91C1C; }
+  .rend-bar { height: 6px; background: var(--surface-2); border-radius: 3px; margin-top: 8px; overflow: hidden; position: relative; }
+  .rend-bar-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
+  .rend-bar-target { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--text); border-radius: 1px; }
+  .rend-acum { font-size: 9.5px; color: var(--text-3); margin-top: 4px; display: flex; justify-content: space-between; }
+
+  .plan-prensa-grid { display: grid; grid-template-columns: repeat(7,1fr); gap: 10px; margin-bottom: 16px; }
+  .plan-prensa-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 14px; text-align: center; }
+  .plan-prensa-card.is-crit { border-color: var(--coral); background: var(--warn-bg); }
+  .plan-prensa-name { font-size: 11px; font-weight: 700; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.06em; }
+  .plan-prensa-days { font-size: 28px; font-weight: 600; letter-spacing: -0.02em; line-height: 1; margin-top: 8px; }
+  .plan-prensa-days.is-crit { color: var(--coral); }
+  .plan-prensa-sub { font-size: 10.5px; color: var(--text-3); margin-top: 4px; line-height: 1.5; }
+  .plan-prensa-tag { display: inline-block; font-size: 9.5px; font-weight: 600; padding: 2px 8px; border-radius: 8px; margin: 8px 0 4px; }
+  .plan-tag-purp { background:#DFF3EC; color:#074F3A; }
+  .plan-tag-polp { background:#EEEDFC; color:#3A318E; }
+  .plan-tag-nopur { background:#FDF0E3; color:#7A480A; }
+  .plan-bar { height: 4px; background: var(--surface-2); border-radius: 2px; margin-top: 8px; overflow: hidden; }
+  .plan-bar-fill { height: 100%; border-radius: 2px; }
+  .gantt-wrap { overflow-x: auto; margin-top: 8px; }
+  .gantt-row { display: flex; align-items: center; margin-bottom: 6px; }
+  .gantt-row-label { width: 64px; flex-shrink: 0; font-size: 11px; font-weight: 600; color: var(--text-2); text-align: right; padding-right: 10px; }
+  .gantt-track { flex: 1; height: 30px; background: var(--surface-2); border-radius: 6px; position: relative; min-width: 700px; }
+  .gantt-bar { position: absolute; top: 3px; height: 24px; border-radius: 4px; display: flex; align-items: center; padding: 0 6px; font-size: 9.5px; font-weight: 500; color: #fff; overflow: hidden; white-space: nowrap; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+  .gantt-bar.cycle { background: repeating-linear-gradient(45deg,rgba(22,144,106,0.3) 0,rgba(22,144,106,0.3) 4px,transparent 4px,transparent 8px); border: 1px dashed rgba(22,144,106,0.6); color: var(--purp); font-size: 8.5px; box-shadow: none; }
+  .gantt-divider { position: absolute; top: -3px; bottom: -3px; width: 1px; background: rgba(0,0,0,0.12); }
+  .gantt-day { font-size: 10px; font-weight: 700; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.06em; text-align: center; padding: 0 4px; }
+  .plan-alert { background:#DFF3EC; border-left: 3px solid var(--purp); padding: 12px 18px; border-radius: 10px; margin-bottom: 14px; font-size: 11.5px; color:#074F3A; line-height: 1.6; }
+  .plan-balance-kpi { font-size: 11px; padding: 4px 10px; border-radius: 8px; font-weight: 600; }
+  .plan-balance-good { background:#DFF3EC; color:#074F3A; }
+  .plan-balance-warn { background:#FDF0E3; color:#7A480A; }
+</style>
+</head>
+<body>
+<style>
+#polchile-nav{display:flex;align-items:center;background:#000;padding:0 20px;height:40px;border-bottom:1px solid #232932;font-family:'JetBrains Mono',monospace;gap:4px;position:sticky;top:0;z-index:9999;}
+#polchile-nav .nav-logo{font-size:10px;font-weight:700;letter-spacing:2px;color:#d4ff5a;margin-right:12px;cursor:pointer;}
+#polchile-nav button{padding:4px 12px;font-size:10px;font-weight:700;letter-spacing:1px;border-radius:4px;border:1px solid transparent;color:#8a94a3;background:transparent;cursor:pointer;transition:all 0.15s;font-family:'JetBrains Mono',monospace;}
+#polchile-nav button:hover{color:#d4ff5a;border-color:#d4ff5a;}
+#polchile-nav button.active{color:#d4ff5a;border-color:#d4ff5a;background:rgba(212,255,90,0.08);}
+#polchile-nav .nav-time{margin-left:auto;font-size:10px;color:#8a94a3;letter-spacing:1px;}
+</style>
+<div id="polchile-nav">
+  <span class="nav-logo" onclick="window.top.location.href='https://melodic-dasik-d903ff.netlify.app/command-center/'">&#x2B21; POLCHILE</span>
+  <button onclick="window.top.location.href='https://cockpit-comericial-web.netlify.app/'">COMERCIAL</button>
+  <button class="active">PRODUCCION</button>
+  <button onclick="window.top.location.href='https://dashboard-finanzasweb.netlify.app/'">FINANZAS</button>
+  <button onclick="window.top.location.href='https://calendario-despachos.netlify.app/'">CALENDARIO</button>
+  <span class="nav-time" id="nav-clock"></span>
+</div>
+<script>
+(function(){
+  var clk=document.getElementById('nav-clock');
+  function tick(){
+    var d=new Date(),
+        h=d.getHours().toString().padStart(2,'0'),
+        m=d.getMinutes().toString().padStart(2,'0'),
+        s=d.getSeconds().toString().padStart(2,'0');
+    if(clk) clk.textContent=h+':'+m+':'+s;
+  }
+  tick(); setInterval(tick,1000);
+})();
+</script>
+<div id="root"></div>
+<script type="text/babel">
+const {useState, useEffect} = React;
+
+function App() {
+  const [sysError,        setSysError]        = useState(null);
+  const [inventario,      setInventario]      = useState({ acero:[], pol:[], kpiAcero:{}, kpiPol:{}, proveedoresAcero:[] });
+  const [mostrarProvInv,  setMostrarProvInv]   = useState(true);
+  const [mostrarProvWip,  setMostrarProvWip]   = useState(true);
+  const [wipAcero,        setWipAcero]         = useState({ items:[] });
+  const [frecuenciaAcero, setFrecuenciaAcero]  = useState(30);
+  const [diasLlegada,     setDiasLlegada]      = useState(() => {
+    const saved = localStorage.getItem('polchile_dias_llegada');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      const guardado = new Date(parsed.fecha);
+      const hoy = new Date();
+      const diff = Math.round((hoy - guardado) / (1000*60*60*24));
+      const restante = parsed.dias - diff;
+      return restante > 0 ? restante : 0;
+    }
+    return 90;
+  });
+
+  const fetchData = () => {
+    if (typeof google === 'undefined') return;
+    setSysError(null);
+    google.script.run.withSuccessHandler(res => {
+      if (res?.error) setSysError("Error Inventario: "+res.error);
+      else if (res) setInventario(res);
+    }).getInventarioInsumos();
+
+    google.script.run.withSuccessHandler(res => {
+      if (res && res.error) setSysError("Error WIP Acero: "+res.error);
+      else if (res) setWipAcero(res);
+    }).getWipAcero();
+  };
+
+  useEffect(() => {
+    fetchData();
+    const iv = setInterval(fetchData, 60000);
+    return () => clearInterval(iv);
+  }, []);
+
+  const renderInv = (label, rows, kpi, color, proveedores) => {
+    proveedores = proveedores || [];
+    if(!rows||rows.length===0) return <div style={{color:'var(--text-3)',fontSize:12,padding:'12px 0',marginBottom:24}}>Sin datos para {label}.</div>;
+    const f=n=>(n||0).toLocaleString('es-CL',{maximumFractionDigits:1});
+    return (
+      <>
+        <div className="kpi-grid" style={{gridTemplateColumns:'repeat(4,1fr)',marginBottom:14}}>
+          <div className="kpi" style={{borderLeft:`4px solid ${color}`}}>
+            <div className="kpi-label">Stock Físico Total</div>
+            <div className="kpi-value" style={{color,fontSize:26}}>{f(kpi.totalStk)}</div>
+          </div>
+          <div className="kpi" style={{borderLeft:`4px solid ${kpi.totalDisp>=0?'var(--purp)':'var(--coral)'}`}}>
+            <div className="kpi-label">Disponible Total</div>
+            <div className="kpi-value" style={{color:kpi.totalDisp>=0?'var(--purp)':'var(--coral)',fontSize:26}}>{f(kpi.totalDisp)}</div>
+          </div>
+          <div className="kpi" style={{borderLeft:'4px solid #F59E0B'}}>
+            <div className="kpi-label">Disp. Futuro Total</div>
+            <div className="kpi-value" style={{color:'#D97706',fontSize:26}}>{f(kpi.totalFuturo)}</div>
+          </div>
+          <div className="kpi" style={{borderLeft:kpi.dispNeg>0?'4px solid var(--coral)':'4px solid var(--purp)'}}>
+            <div className="kpi-label">Ítems Disp. Negativo</div>
+            <div className="kpi-value" style={{color:kpi.dispNeg>0?'var(--coral)':'var(--purp)',fontSize:26}}>
+              {kpi.dispNeg||0}<span className="kpi-unit">/ {kpi.totalItems||0}</span>
+            </div>
+          </div>
+        </div>
+        <div className="card" style={{padding:0,overflow:'hidden',marginBottom:30}}>
+          <div style={{padding:'14px 22px',borderBottom:'1px solid var(--border)',background:'var(--surface-2)',display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:10}}>
+            <b style={{fontSize:13}}>{label}</b>
+            <div style={{display:'flex',alignItems:'center',gap:12}}>
+              {proveedores.length>0 &&
+                <button onClick={()=>setMostrarProvInv(v=>!v)} style={{fontSize:10,fontWeight:700,padding:'4px 10px',borderRadius:6,border:'1px solid var(--border-2)',background:mostrarProvInv?'var(--surface)':'#EFF6FF',color:mostrarProvInv?'var(--text-2)':'#2563EB',cursor:'pointer'}}>
+                  {mostrarProvInv ? '◀ Ocultar proveedores' : `▶ Ver proveedores (${proveedores.length})`}
+                </button>
+              }
+              <span style={{fontSize:11,color:'var(--text-3)'}}>{kpi.conStock||0} con stock · <span style={{color:'var(--coral)',fontWeight:700}}>{kpi.sinStock||0} sin stock</span></span>
+            </div>
+          </div>
+          <div style={{maxHeight:420,overflowY:'auto'}}>
+            <table>
+              <thead><tr>
+                <th style={{paddingLeft:22,width:140}}>Código</th><th>Descripción</th>
+                <th style={{textAlign:'right'}}>Stk. Físico</th><th style={{textAlign:'right'}}>Por Entregar</th>
+                <th style={{textAlign:'right'}}>Disponible</th><th style={{textAlign:'right'}}>Por Llegar</th>
+                {mostrarProvInv && proveedores.map(p=>(
+                  <th key={p} style={{textAlign:'right',fontSize:10,whiteSpace:'nowrap'}} title={p}>{p}</th>
+                ))}
+                <th style={{textAlign:'right'}}>Disp. Futuro</th>
+              </tr></thead>
+              <tbody>
+                {rows.map((r,i)=>{
+                  const dn=r.disponible<0, fn=r.disp_futuro<0, ss=r.stk_fisico<=0;
+                  return(
+                    <tr key={i} style={{background:dn?'#FFF5F5':'transparent'}}>
+                      <td style={{paddingLeft:22,fontFamily:'monospace',fontSize:10,color:'var(--text-3)'}}>{r.codigo}</td>
+                      <td style={{maxWidth:280,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',fontSize:11.5,color:ss?'var(--text-3)':'var(--text)'}} title={r.descripcion}>{r.descripcion}</td>
+                      <td style={{textAlign:'right',fontFamily:'monospace',color:ss?'var(--text-3)':'var(--text-2)',fontWeight:ss?400:600}}>{f(r.stk_fisico)}</td>
+                      <td style={{textAlign:'right',fontFamily:'monospace',color:r.por_entregar>0?'var(--coral)':'var(--text-3)'}}>{f(r.por_entregar)}</td>
+                      <td style={{textAlign:'right',fontFamily:'monospace',fontWeight:dn?700:400,color:dn?'var(--coral)':'var(--purp)',background:dn?'#FEE2E2':'transparent'}}>{f(r.disponible)}</td>
+                      <td style={{textAlign:'right',fontFamily:'monospace',color:'var(--text-3)'}}>{f(r.por_llegar)}</td>
+                      {mostrarProvInv && proveedores.map(p=>{
+                        const cant=(r.porProveedor&&r.porProveedor[p])||0;
+                        return (
+                          <td key={p} style={{textAlign:'right',fontFamily:'monospace',fontSize:11,color:cant>0?'#2563EB':'var(--text-3)',fontWeight:cant>0?600:400}}>
+                            {cant>0?f(cant):'—'}
+                          </td>
+                        );
+                      })}
+                      <td style={{textAlign:'right',fontFamily:'monospace',fontWeight:fn?700:400,color:fn?'#D97706':'var(--text-2)'}}>{f(r.disp_futuro)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </>
+    );
+  };
+
+  const handleDiasLlegada = (val) => {
+    const dias = Math.max(0, parseInt(val) || 0);
+    setDiasLlegada(dias);
+    localStorage.setItem('polchile_dias_llegada', JSON.stringify({
+      dias: dias,
+      fecha: new Date().toISOString()
+    }));
+  };
+
+  const renderWipAcero = () => {
+    const items = wipAcero.items || [];
+    if (items.length === 0) return null;
+
+    const criticos   = items.filter(r => r.urgencia === 'critico').length;
+    const alertas    = items.filter(r => r.urgencia === 'alerta').length;
+    const sinConsumo = items.filter(r => r.urgencia === 'sin_consumo').length;
+
+    const urgColor = (u) => u==='critico'?'#EF4444':u==='alerta'?'#F59E0B':u==='sin_consumo'?'#9CA3AF':'#22C55E';
+    const urgBg    = (u) => u==='critico'?'#FEE2E2':u==='alerta'?'#FEF3C7':u==='sin_consumo'?'#F3F4F6':'#DCFCE7';
+    const urgTxt   = (u) => u==='critico'?'Crítico':u==='alerta'?'Alerta':u==='sin_consumo'?'Sin datos':'OK';
+
+    const fmtMeses = (m) => {
+      if (m === null || m === undefined || isNaN(m)) return '—';
+      if (m < 1) return `${Math.round(m*30)} días`;
+      return `${m.toFixed(1)} meses`;
+    };
+
+    const barPct = (m) => {
+      if (m === null || m === undefined || isNaN(m)) return 0;
+      return Math.min(100, (m / 3) * 100);
+    };
+    const barColor = (u) => urgColor(u);
+
+    return (
+      <>
+        <div className="kpi-grid" style={{gridTemplateColumns:'repeat(3,1fr)', marginBottom:14}}>
+          <div className="kpi" style={{borderLeft:'4px solid var(--acero)'}}>
+            <div className="kpi-label">Aceros con Stock &gt; 0</div>
+            <div className="kpi-value" style={{color:'var(--acero)', fontSize:28}}>{items.length}<span className="kpi-unit">aceros</span></div>
+          </div>
+          <div className="kpi" style={{borderLeft: criticos>0 ? '4px solid #EF4444' : '4px solid var(--purp)'}}>
+            <div className="kpi-label">Críticos ≤ 1 mes</div>
+            <div className="kpi-value" style={{color: criticos>0?'#EF4444':'var(--purp)', fontSize:28}}>
+              {criticos}<span className="kpi-unit">aceros</span>
+            </div>
+          </div>
+          <div className="kpi" style={{borderLeft: alertas>0 ? '4px solid #F59E0B' : '4px solid var(--purp)'}}>
+            <div className="kpi-label">Alerta 1–2 meses</div>
+            <div className="kpi-value" style={{color: alertas>0?'#D97706':'var(--purp)', fontSize:28}}>
+              {alertas}<span className="kpi-unit">aceros</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="card" style={{padding:0, overflow:'hidden', marginBottom:16}}>
+          <div style={{padding:'14px 22px', borderBottom:'1px solid var(--border)', background:'var(--surface-2)', display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:12}}>
+            <b style={{fontSize:13}}>Proyección de Agotamiento · Aceros con Stock</b>
+            <div style={{display:'flex', alignItems:'center', gap:12}}>
+              <span style={{fontSize:11, color:'var(--text-3)'}}>Importación llega en:</span>
+              <div style={{display:'flex', alignItems:'center', gap:6}}>
+                <input
+                  type="number" min="0" max="365"
+                  value={diasLlegada}
+                  onChange={e => handleDiasLlegada(e.target.value)}
+                  style={{width:64, padding:'4px 8px', borderRadius:6, border:'1px solid var(--border-2)',
+                    fontFamily:'monospace', fontSize:13, fontWeight:700, color:'#2563EB',
+                    background:'var(--surface)', textAlign:'center'}}
+                />
+                <span style={{fontSize:11, color:'var(--text-3)'}}>días</span>
+                {diasLlegada === 0 && <span style={{fontSize:10, fontWeight:700, color:'var(--coral)', background:'#FEE2E2', padding:'2px 8px', borderRadius:6}}>🚨 Llegó hoy</span>}
+                {diasLlegada > 0 && diasLlegada <= 30 && <span style={{fontSize:10, fontWeight:700, color:'#92400E', background:'#FEF3C7', padding:'2px 8px', borderRadius:6}}>⚡ Próxima llegada</span>}
+              </div>
+              <span style={{fontSize:11, color:'var(--text-3)'}}>Ordenado por consumo mensual</span>
+              {(wipAcero.proveedores||[]).length>0 &&
+                <button onClick={()=>setMostrarProvWip(v=>!v)} style={{fontSize:10,fontWeight:700,padding:'4px 10px',borderRadius:6,border:'1px solid var(--border-2)',background:mostrarProvWip?'var(--surface)':'#EFF6FF',color:mostrarProvWip?'var(--text-2)':'#2563EB',cursor:'pointer'}}>
+                  {mostrarProvWip ? '◀ Ocultar proveedores' : `▶ Ver proveedores (${(wipAcero.proveedores||[]).length})`}
+                </button>
+              }
+            </div>
+          </div>
+          <div style={{maxHeight:460, overflowY:'auto'}}>
+            <table>
+              <thead>
+                <tr>
+                  <th style={{paddingLeft:22, width:120}}>Código</th>
+                  <th>Descripción</th>
+                  <th style={{textAlign:'right'}}>Consumo/Mes (kg)</th>
+                  <th style={{textAlign:'right'}}>Stock Físico (kg)</th>
+                  <th style={{textAlign:'right'}}>Por Entregar (kg)</th>
+                  <th style={{textAlign:'right'}}>Saldo (kg)</th>
+                  <th style={{textAlign:'center', width:110}}>Quiebre Stock Actual</th>
+                  <th style={{textAlign:'right'}}>Por Llegar (kg)</th>
+                  {mostrarProvWip && (wipAcero.proveedores||[]).map(p=>(
+                    <th key={p} style={{textAlign:'right',fontSize:9.5,whiteSpace:'nowrap'}} title={p}>{p}</th>
+                  ))}
+                  <th style={{textAlign:'center', width:110}}>Quiebre c/ Importación</th>
+                  <th style={{textAlign:'center', width:120}}>⚠ Comprar antes de</th>
+                  <th style={{textAlign:'center', width:80}}>Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((r,i) => {
+                  const saldoNeg   = (r.saldo||0) < 0;
+                  const conConsumo = r.consumo_mes_kg > 0;
+                  const LEAD       = 90;
+
+                  const diasStk        = conConsumo ? ((r.stk_fisico||0) / r.consumo_mes_kg) * 30.44 : null;
+                  const fechaSaldo     = diasStk !== null ? new Date() : null;
+                  if (fechaSaldo) fechaSaldo.setDate(fechaSaldo.getDate() + Math.floor(diasStk));
+                  const fSaldoStr      = fechaSaldo ? fechaSaldo.toLocaleDateString('es-CL',{day:'2-digit',month:'2-digit',year:'numeric'}) : '—';
+                  const diasSaldo      = diasStk !== null ? Math.floor(diasStk) : null;
+                  const saldoAgotado   = diasSaldo !== null && diasSaldo <= 0;
+                  const saldoCritico   = diasSaldo !== null && diasSaldo > 0 && diasSaldo <= 30;
+                  const bgSaldo        = !conConsumo ? '#F3F4F6' : saldoAgotado ? '#FEE2E2' : saldoCritico ? '#FEF3C7' : '#F3F4F6';
+                  const txSaldo        = !conConsumo ? '#9CA3AF' : saldoAgotado ? '#B91C1C' : saldoCritico ? '#92400E' : '#374151';
+                  const labelSaldo     = !conConsumo ? '—' : saldoAgotado ? ('🚨 Agotado') : fSaldoStr;
+
+                  const consumoDiario    = conConsumo ? r.consumo_mes_kg / 30.44 : 0;
+                  const stockAlLlegar    = Math.max(0, (r.saldo||0) - consumoDiario * diasLlegada);
+                  const stockConImport   = stockAlLlegar + (r.por_llegar||0);
+                  const diasDesdeHoy     = conConsumo && stockConImport > 0
+                    ? diasLlegada + Math.round((stockConImport / r.consumo_mes_kg) * 30.44)
+                    : diasSaldo;
+                  const fechaTotal       = diasDesdeHoy !== null ? new Date() : null;
+                  if (fechaTotal) fechaTotal.setDate(fechaTotal.getDate() + diasDesdeHoy);
+                  const fTotalStr        = fechaTotal ? fechaTotal.toLocaleDateString('es-CL',{day:'2-digit',month:'2-digit',year:'numeric'}) : '—';
+                  const totalAgotado     = diasDesdeHoy !== null && diasDesdeHoy <= 0;
+                  const totalCritico     = diasDesdeHoy !== null && diasDesdeHoy > 0 && diasDesdeHoy <= 90;
+                  const bgTotal          = !conConsumo ? '#F3F4F6' : totalAgotado ? '#FEE2E2' : totalCritico ? '#FEF3C7' : '#DCFCE7';
+                  const txTotal          = !conConsumo ? '#9CA3AF' : totalAgotado ? '#B91C1C' : totalCritico ? '#92400E' : '#15803D';
+                  const labelTotal       = !conConsumo ? '—' : totalAgotado ? '🚨 Agotado' : fTotalStr;
+                  const tooltipImport    = conConsumo && (r.por_llegar||0) > 0
+                    ? 'Saldo al llegar: ' + Math.round(stockAlLlegar).toLocaleString('es-CL') + ' kg + ' + (r.por_llegar||0).toLocaleString('es-CL') + ' kg importación = ' + Math.round(stockConImport).toLocaleString('es-CL') + ' kg'
+                    : '';
+
+                  const diasCompra       = diasDesdeHoy !== null ? diasDesdeHoy - LEAD : null;
+                  const fechaCompra      = diasCompra !== null ? new Date() : null;
+                  if (fechaCompra) fechaCompra.setDate(fechaCompra.getDate() + diasCompra);
+                  const fCompraStr       = fechaCompra ? fechaCompra.toLocaleDateString('es-CL',{day:'2-digit',month:'2-digit',year:'numeric'}) : '—';
+                  const compraUrgente    = diasCompra !== null && diasCompra <= 0;
+                  const compraPronto     = diasCompra !== null && diasCompra > 0 && diasCompra <= 30;
+                  const bgCompra         = !conConsumo ? '#F3F4F6' : compraUrgente ? '#FEE2E2' : compraPronto ? '#FEF3C7' : '#DCFCE7';
+                  const txCompra         = !conConsumo ? '#9CA3AF' : compraUrgente ? '#B91C1C' : compraPronto ? '#92400E' : '#15803D';
+                  const labelCompra      = !conConsumo ? '—' : compraUrgente ? ('🚨 AHORA (hace '+Math.abs(diasCompra)+'d)') : compraPronto ? ('⚡ '+fCompraStr) : fCompraStr;
+
+                  return (
+                    <tr key={i} style={{background: r.urgencia==='critico'?'#FFF5F5':r.urgencia==='alerta'?'#FFFBEB':r.urgencia==='sin_consumo'?'#F9FAFB':'transparent'}}>
+                      <td style={{paddingLeft:22, fontFamily:'monospace', fontSize:10, color:'var(--text-3)'}}>{r.codigo}</td>
+                      <td style={{maxWidth:190, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', fontSize:11.5}} title={r.descripcion}>{r.descripcion}</td>
+                      <td style={{textAlign:'right', fontFamily:'monospace', fontWeight:700, color:'var(--text-2)'}}>
+                        {conConsumo ? r.consumo_mes_kg.toLocaleString('es-CL',{maximumFractionDigits:1}) : '—'}
+                      </td>
+                      <td style={{textAlign:'right', fontFamily:'monospace'}}>{(r.stk_fisico||0).toLocaleString('es-CL',{maximumFractionDigits:1})}</td>
+                      <td style={{textAlign:'right', fontFamily:'monospace', color:(r.por_entregar||0)>0?'var(--coral)':'var(--text-3)'}}>
+                        {(r.por_entregar||0)>0 ? r.por_entregar.toLocaleString('es-CL',{maximumFractionDigits:1}) : '—'}
+                      </td>
+                      <td style={{textAlign:'right', fontFamily:'monospace', fontWeight:600, color:saldoNeg?'var(--coral)':'var(--purp)', background:saldoNeg?'#FEE2E2':'transparent'}}>
+                        {(r.saldo||0).toLocaleString('es-CL',{maximumFractionDigits:1})}
+                      </td>
+                      <td style={{textAlign:'center'}}>
+                        <span style={{display:'inline-block', padding:'2px 8px', borderRadius:6, fontSize:10, fontWeight:700, background:bgSaldo, color:txSaldo, whiteSpace:'nowrap'}}>
+                          {labelSaldo}
+                        </span>
+                      </td>
+                      <td style={{textAlign:'right', fontFamily:'monospace', color:(r.por_llegar||0)>0?'#2563EB':'var(--text-3)', fontWeight:(r.por_llegar||0)>0?600:400}}>
+                        {(r.por_llegar||0)>0 ? r.por_llegar.toLocaleString('es-CL',{maximumFractionDigits:1}) : '—'}
+                      </td>
+                      {mostrarProvWip && (wipAcero.proveedores||[]).map(p=>{
+                        const cant=(r.porProveedor&&r.porProveedor[p])||0;
+                        return (
+                          <td key={p} style={{textAlign:'right', fontFamily:'monospace', fontSize:10.5, color:cant>0?'#2563EB':'var(--text-3)', fontWeight:cant>0?600:400}}>
+                            {cant>0?cant.toLocaleString('es-CL',{maximumFractionDigits:1}):'—'}
+                          </td>
+                        );
+                      })}
+                      <td style={{textAlign:'center'}} title={tooltipImport}>
+                        <span style={{display:'inline-block', padding:'2px 8px', borderRadius:6, fontSize:10, fontWeight:700, background:bgTotal, color:txTotal, whiteSpace:'nowrap'}}>
+                          {labelTotal}
+                        </span>
+                        {tooltipImport && <div style={{fontSize:9, color:'var(--text-3)', marginTop:2, maxWidth:130, whiteSpace:'normal', lineHeight:1.3}}>{tooltipImport}</div>}
+                      </td>
+                      <td style={{textAlign:'center'}}>
+                        <span style={{display:'inline-block', padding:'3px 10px', borderRadius:8, fontSize:10, fontWeight:700, background:bgCompra, color:txCompra, whiteSpace:'nowrap'}}>
+                          {labelCompra}
+                        </span>
+                      </td>
+                      <td style={{textAlign:'center'}}>
+                        <span style={{display:'inline-block', padding:'2px 8px', borderRadius:10, fontSize:9, fontWeight:700, background:urgBg(r.urgencia||'ok'), color:urgColor(r.urgencia||'ok')}}>
+                          {urgTxt(r.urgencia||'ok')}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {(() => {
+          const frecuencia     = frecuenciaAcero;
+          const setFrecuencia  = setFrecuenciaAcero;
+          const frecOpciones = [
+            {dias:30,  label:'Mensual (30d)'},
+            {dias:60,  label:'60 días'},
+            {dias:90,  label:'90 días'},
+            {dias:120, label:'120 días'},
+          ];
+          const mesesCompra      = frecuencia / 30.44;
+          const itemsConConsumo  = items.filter(r => r.consumo_mes_kg > 0);
+          const totalCompraKg    = itemsConConsumo.reduce((acc,r) => acc + r.consumo_mes_kg * mesesCompra, 0);
+          const fechaProxima     = (() => { const d=new Date(); d.setDate(d.getDate()+frecuencia); return d.toLocaleDateString('es-CL',{day:'2-digit',month:'2-digit',year:'numeric'}); })();
+
+          return (
+            <div className="card" style={{marginBottom:30}}>
+              <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16, flexWrap:'wrap', gap:12}}>
+                <div>
+                  <b style={{fontSize:13}}>Estimación de Importación</b>
+                  <div style={{fontSize:11, color:'var(--text-3)', marginTop:2}}>Cantidad a comprar según frecuencia · basado en consumo mensual promedio</div>
+                </div>
+                <div style={{display:'flex', gap:8}}>
+                  {frecOpciones.map(op => (
+                    <button key={op.dias} onClick={() => setFrecuencia(op.dias)}
+                      style={{padding:'6px 14px', borderRadius:8, border:'1px solid var(--border)',
+                        background:frecuencia===op.dias?'var(--text)':'var(--surface)',
+                        color:frecuencia===op.dias?'#fff':'var(--text-2)',
+                        fontWeight:frecuencia===op.dias?700:400,
+                        fontSize:12, cursor:'pointer'}}>
+                      {op.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:14, marginBottom:16}}>
+                <div style={{background:'var(--surface-2)', borderRadius:10, padding:'14px 18px'}}>
+                  <div style={{fontSize:10, color:'var(--text-3)', fontWeight:600, textTransform:'uppercase', marginBottom:4}}>Período de Compra</div>
+                  <div style={{fontSize:26, fontWeight:700}}>{frecuencia}<span style={{fontSize:13, color:'var(--text-3)', marginLeft:4}}>días</span></div>
+                  <div style={{fontSize:11, color:'var(--text-3)', marginTop:3}}>{mesesCompra.toFixed(1)} meses de stock</div>
+                </div>
+                <div style={{background:'var(--surface-2)', borderRadius:10, padding:'14px 18px'}}>
+                  <div style={{fontSize:10, color:'var(--text-3)', fontWeight:600, textTransform:'uppercase', marginBottom:4}}>Total a Importar</div>
+                  <div style={{fontSize:26, fontWeight:700, color:'var(--acero)'}}>{Math.round(totalCompraKg).toLocaleString('es-CL')}<span style={{fontSize:13, color:'var(--text-3)', marginLeft:4}}>kg</span></div>
+                  <div style={{fontSize:11, color:'var(--text-3)', marginTop:3}}>{itemsConConsumo.length} referencias con consumo registrado</div>
+                </div>
+                <div style={{background:'var(--surface-2)', borderRadius:10, padding:'14px 18px'}}>
+                  <div style={{fontSize:10, color:'var(--text-3)', fontWeight:600, textTransform:'uppercase', marginBottom:4}}>Próxima Importación</div>
+                  <div style={{fontSize:26, fontWeight:700, color:'var(--purp)'}}>{fechaProxima}</div>
+                  <div style={{fontSize:11, color:'var(--text-3)', marginTop:3}}>en {frecuencia} días más</div>
+                </div>
+              </div>
+
+              <div style={{maxHeight:360, overflowY:'auto'}}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th style={{paddingLeft:12, width:120}}>Código</th>
+                      <th>Descripción</th>
+                      <th style={{textAlign:'right'}}>Consumo/Mes (kg)</th>
+                      <th style={{textAlign:'right'}}>Saldo Actual (kg)</th>
+                      <th style={{textAlign:'right', color:'var(--acero)'}}>A Comprar (kg)</th>
+                      <th style={{textAlign:'center'}}>Durará con compra</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {itemsConConsumo.map((r,i) => {
+                      const aComprar     = Math.round(r.consumo_mes_kg * mesesCompra);
+                      const stockFinal   = (r.saldo||0) + aComprar;
+                      const mesesFinales = r.consumo_mes_kg>0 ? stockFinal/r.consumo_mes_kg : 0;
+                      return (
+                        <tr key={i}>
+                          <td style={{paddingLeft:12, fontFamily:'monospace', fontSize:10, color:'var(--text-3)'}}>{r.codigo}</td>
+                          <td style={{maxWidth:210, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', fontSize:11}} title={r.descripcion}>{r.descripcion}</td>
+                          <td style={{textAlign:'right', fontFamily:'monospace', color:'var(--text-2)'}}>{r.consumo_mes_kg.toLocaleString('es-CL',{maximumFractionDigits:1})}</td>
+                          <td style={{textAlign:'right', fontFamily:'monospace', color:(r.saldo||0)<0?'var(--coral)':'var(--text-2)', fontWeight:(r.saldo||0)<0?700:400}}>
+                            {(r.saldo||0).toLocaleString('es-CL',{maximumFractionDigits:1})}
+                          </td>
+                          <td style={{textAlign:'right', fontFamily:'monospace', fontWeight:700, color:'var(--acero)'}}>
+                            {aComprar.toLocaleString('es-CL')}
+                          </td>
+                          <td style={{textAlign:'center', fontSize:11, fontWeight:600, color: mesesFinales>=3?'var(--purp)':mesesFinales>=1?'#D97706':'var(--coral)'}}>
+                            {mesesFinales.toFixed(1)} meses
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+        })()}
+      </>
+    );
+  };
+
+
+  return (
+    <main className="main">
+
+      <div className="page-header">
+        <div>
+          <div className="page-title">Inventario de Aceros · Tiempo Real</div>
+          <div style={{fontSize:12,color:'var(--text-3)',marginTop:4}}>Sincronizado: {new Date().toLocaleTimeString('es-CL')}</div>
+        </div>
+        <button className="tweaks-btn" onClick={fetchData}>↻ Actualizar</button>
+      </div>
+
+      {sysError&&<div className="sys-error"><span>⚠️ {sysError}</span><span style={{cursor:'pointer'}} onClick={()=>setSysError(null)}>✖</span></div>}
+
+      <div className="section-title">
+        WIP Acero · Proyección de Agotamiento
+        {(wipAcero.items||[]).filter(r=>r.urgencia==='critico').length > 0 && (
+          <span style={{background:'#FEE2E2',color:'#B91C1C',fontWeight:700,fontSize:10,padding:'3px 10px',borderRadius:8}}>
+            ⚠ {(wipAcero.items||[]).filter(r=>r.urgencia==='critico').length} aceros críticos (≤ 1 mes)
+          </span>
+        )}
+      </div>
+      {renderWipAcero()}
+
+      <div className="section-title">
+        Inventario de Insumos · Aceros
+        {inventario.kpiAcero?.dispNeg>0&&<span style={{background:'#FEE2E2',color:'var(--coral)',fontWeight:700,fontSize:10,padding:'3px 10px',borderRadius:8}}>⚠ {inventario.kpiAcero.dispNeg} ítems negativos</span>}
+      </div>
+      {renderInv("Aceros — Stock detallado", inventario.acero, inventario.kpiAcero||{}, 'var(--acero)', inventario.proveedoresAcero||[])}
+
+      <footer style={{textAlign:'center',marginTop:40,color:'var(--text-3)',fontSize:11}}>Polchile · Inventario de Aceros</footer>
+    </main>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
