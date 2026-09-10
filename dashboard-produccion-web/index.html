@@ -995,7 +995,10 @@ function App() {
           <div className="page-title">Dashboard Producción · Tiempo Real</div>
           <div style={{fontSize:12,color:'var(--text-3)',marginTop:4}}>Sincronizado: {new Date().toLocaleTimeString('es-CL')}</div>
         </div>
-        <button className="tweaks-btn" onClick={fetchData}>↻ Actualizar</button>
+        <div style={{display:'flex',gap:10}}>
+          <button className="tweaks-btn" style={{background:'#6366F1',color:'#fff',border:'none'}} onClick={()=>window.location.href='ejecutivo.html'}>📊 Ver Ejecutivo</button>
+          <button className="tweaks-btn" onClick={fetchData}>↻ Actualizar</button>
+        </div>
       </div>
 
       {sysError&&<div className="sys-error"><span>⚠️ {sysError}</span><span style={{cursor:'pointer'}} onClick={()=>setSysError(null)}>✖</span></div>}
