@@ -136,10 +136,43 @@
     background:var(--card); border-radius:14px; padding:18px; width:320px;
     max-height:70vh; overflow-y:auto;
   }
+  .modal.day-modal{width:460px; max-height:82vh}
   .modal h3{margin:0 0 10px;font-size:14px}
   .modal label{display:flex;align-items:center;gap:8px;font-size:13px;padding:7px 0;cursor:pointer}
   .modal .actions{margin-top:12px}
   .page-wrap{position:relative}
+
+  /* ---- bandeja de tarjetas arrastrables + bloques horarios ---- */
+  .tray-label{font-size:10.5px;text-transform:uppercase;letter-spacing:.03em;color:var(--text-muted);font-weight:700;margin:2px 0 6px}
+  .chip-tray{display:flex;flex-wrap:wrap;gap:6px;padding-bottom:12px;margin-bottom:12px;border-bottom:1px dashed var(--border)}
+  .chip{
+    display:flex;align-items:center;gap:6px;background:#f4f4f1;border:1px solid var(--border);
+    border-radius:20px;padding:4px 10px 4px 8px;font-size:11.5px;font-weight:600;
+    cursor:grab;user-select:none;
+  }
+  .chip:active{cursor:grabbing}
+  .chip.dragging{opacity:.4}
+  .chip .chip-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+  .chip .chip-x{
+    margin-left:2px;color:var(--text-muted);font-weight:800;line-height:1;cursor:pointer;
+    padding:0 2px;
+  }
+  .chip .chip-x:hover{color:var(--red)}
+  .hour-row{display:flex;align-items:flex-start;gap:10px;margin-bottom:8px}
+  .hour-label{width:48px;flex-shrink:0;font-size:11.5px;font-weight:700;color:var(--text-muted);padding-top:7px}
+  .hour-body{flex:1;display:flex;flex-direction:column;gap:5px}
+  .hour-drop{
+    min-height:34px; border:1.5px dashed var(--border); border-radius:9px;
+    padding:5px 7px; display:flex; flex-wrap:wrap; gap:5px; align-items:center;
+    transition:background .12s,border-color .12s;
+  }
+  .hour-drop.drag-over{background:#eef4fb;border-color:#2f5d8a}
+  .hour-drop .hint{font-size:10.5px;color:var(--text-muted);opacity:.6}
+  .hour-note{
+    width:100%; border:1px solid var(--border); border-radius:8px; padding:5px 8px;
+    font-family:inherit; font-size:12px; background:#fbfbf7; resize:vertical;
+    min-height:28px;
+  }
 </style>
 </head>
 <body>
@@ -173,9 +206,11 @@
   </div>
 
   <div class="modal-overlay" id="modalOverlay">
-    <div class="modal">
+    <div class="modal day-modal">
       <h3 id="modalDate"></h3>
-      <div id="modalOptions"></div>
+      <div class="tray-label">Arrastra una iniciativa a un horario</div>
+      <div id="chipTray" class="chip-tray"></div>
+      <div id="hourRows"></div>
       <div class="actions">
         <button class="btn" id="modalClose">Listo</button>
       </div>
@@ -186,7 +221,13 @@
 <script>
 const STORAGE_KEY = "bitacora-polchile-v1";
 const CAL_KEY = "bitacora-polchile-calendar-v1";
+const HORARIOS_KEY = "bitacora-polchile-horarios-v1";
+const NOTAS_KEY = "bitacora-polchile-notas-v1";
 const COLLAPSE_KEY = "bitacora-polchile-collapsed-v1";
+
+// Bloques horarios del panel de día: de 08:00 a 18:00 (10 bloques de 1 hora)
+const HORAS = [8,9,10,11,12,13,14,15,16,17];
+function horaLabel(h){ return String(h).padStart(2,"0")+":00"; }
 
 const PALETTE = ["#2f5d8a","#1f8a56","#c1442e","#8a2f5e","#1f7a7a","#5a3d8a","#b8860f","#a8471f","#3d6b1f","#1f3d6b"];
 
@@ -240,6 +281,26 @@ function loadCal(){
 function saveCal(cal){
   localStorage.setItem(CAL_KEY, JSON.stringify(cal));
 }
+function loadHorarios(){
+  try{
+    const raw = localStorage.getItem(HORARIOS_KEY);
+    if(raw) return JSON.parse(raw);
+  }catch(e){}
+  return {}; // { "2026-09-02": { "8": [id,id], "14": [id] } }
+}
+function saveHorarios(h){
+  localStorage.setItem(HORARIOS_KEY, JSON.stringify(h));
+}
+function loadNotas(){
+  try{
+    const raw = localStorage.getItem(NOTAS_KEY);
+    if(raw) return JSON.parse(raw);
+  }catch(e){}
+  return {}; // { "2026-09-02": { "8": "texto libre de esa hora" } }
+}
+function saveNotas(n){
+  localStorage.setItem(NOTAS_KEY, JSON.stringify(n));
+}
 function loadCollapsed(){
   try{
     const raw = localStorage.getItem(COLLAPSE_KEY);
@@ -257,6 +318,8 @@ function saveCollapsed(c){
 
 let data = load();
 let calendar = loadCal();
+let horarios = loadHorarios();
+let notas = loadNotas();
 let collapsed = loadCollapsed();
 let openId = null;
 let viewDate = new Date();
@@ -491,6 +554,27 @@ function dateKey(y,m,d){
   return `${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
 }
 
+// IDs de iniciativas asignadas a un día por CUALQUIER medio: ya sea en
+// algún bloque horario, o (compatibilidad con datos guardados antes de
+// que existieran los horarios) directo en calendar[key] sin hora asignada.
+function idsDelDia(key){
+  const porHora = horarios[key] || {};
+  const idsConHora = new Set();
+  Object.values(porHora).forEach(lista=> lista.forEach(id=>idsConHora.add(id)));
+  const legacy = calendar[key] || [];
+  const todos = new Set([...idsConHora, ...legacy]);
+  return todos;
+}
+// Ids que están en el día pero todavía NO tienen hora asignada (para que
+// se sigan viendo en la bandeja del panel y se puedan arrastrar a un bloque).
+function idsSinHorarioDelDia(key){
+  const porHora = horarios[key] || {};
+  const idsConHora = new Set();
+  Object.values(porHora).forEach(lista=> lista.forEach(id=>idsConHora.add(id)));
+  const legacy = calendar[key] || [];
+  return legacy.filter(id=>!idsConHora.has(id));
+}
+
 function renderCalendar(){
   const y = viewDate.getFullYear();
   const m = viewDate.getMonth();
@@ -523,7 +607,7 @@ function renderCalendar(){
     const key = dateKey(y,m,day);
     const el = document.createElement("div");
     el.className = "cal-day" + (key===todayKey ? " today" : "");
-    const assigned = calendar[key] || [];
+    const assigned = [...idsDelDia(key)];
     const tags = assigned.map(id=>{
       const item = data.find(d=>d.id===id);
       if(!item) return "";
@@ -547,30 +631,134 @@ function openModal(key){
   modalDateKey = key;
   const [y,m,d] = key.split("-").map(Number);
   document.getElementById("modalDate").textContent = `${d} de ${MONTHS[m-1]}`;
-  const opts = document.getElementById("modalOptions");
-  const assigned = calendar[key] || [];
-  opts.innerHTML = data.filter(it=>it.status!=="Descartado").map(it=>`
-    <label>
-      <input type="checkbox" data-cid="${it.id}" ${assigned.includes(it.id)?"checked":""}>
-      <span class="dot" style="background:${it.color};width:9px;height:9px;display:inline-block;border-radius:50%"></span>
+
+  renderChipTray();
+  renderHourRows();
+
+  document.getElementById("modalOverlay").classList.add("open");
+}
+
+// Bandeja de arriba: TODAS las iniciativas activas (arrastrables), más las
+// que quedaron asignadas al día sin hora (de antes de que existieran los
+// bloques horarios) para que se puedan reubicar en un bloque.
+function renderChipTray(){
+  const tray = document.getElementById("chipTray");
+  const activas = data.filter(it=>it.status!=="Descartado");
+  tray.innerHTML = activas.map(it=>`
+    <div class="chip" draggable="true" data-cid="${it.id}">
+      <span class="chip-dot" style="background:${it.color}"></span>
       ${it.n}
-    </label>
+    </div>
   `).join("");
-  opts.querySelectorAll("input[type=checkbox]").forEach(cb=>{
-    cb.addEventListener("change", ()=>{
-      const id = Number(cb.dataset.cid);
-      let list = calendar[modalDateKey] || [];
-      if(cb.checked){
-        if(!list.includes(id)) list.push(id);
-      } else {
-        list = list.filter(x=>x!==id);
-      }
-      calendar[modalDateKey] = list;
-      saveCal(calendar);
-      renderCalendar();
+
+  tray.querySelectorAll(".chip").forEach(chip=>{
+    chip.addEventListener("dragstart", e=>{
+      e.dataTransfer.setData("text/plain", chip.dataset.cid);
+      chip.classList.add("dragging");
+    });
+    chip.addEventListener("dragend", ()=> chip.classList.remove("dragging"));
+  });
+}
+
+// Los 10 bloques horarios (08:00 a 18:00). Cada bloque tiene DOS cosas
+// independientes: una zona para soltar tarjetas de iniciativas arrastradas,
+// y un cuadro de texto libre para anotar cualquier cosa (como una libreta).
+function renderHourRows(){
+  const wrap = document.getElementById("hourRows");
+  wrap.innerHTML = HORAS.map(h=>`
+    <div class="hour-row">
+      <div class="hour-label">${horaLabel(h)}</div>
+      <div class="hour-body">
+        <div class="hour-drop" data-hour="${h}"></div>
+        <textarea class="hour-note" data-nota-hora="${h}" rows="1" placeholder="Nota libre…"></textarea>
+      </div>
+    </div>
+  `).join("");
+
+  wrap.querySelectorAll(".hour-drop").forEach(drop=>{
+    pintarHourDrop(drop);
+
+    drop.addEventListener("dragover", e=>{
+      e.preventDefault();
+      drop.classList.add("drag-over");
+    });
+    drop.addEventListener("dragleave", ()=> drop.classList.remove("drag-over"));
+    drop.addEventListener("drop", e=>{
+      e.preventDefault();
+      drop.classList.remove("drag-over");
+      const id = Number(e.dataTransfer.getData("text/plain"));
+      if(!id) return;
+      asignarAHora(modalDateKey, drop.dataset.hour, id);
     });
   });
-  document.getElementById("modalOverlay").classList.add("open");
+
+  wrap.querySelectorAll(".hour-note").forEach(ta=>{
+    const hour = ta.dataset.notaHora;
+    const porDia = notas[modalDateKey] || {};
+    ta.value = porDia[hour] || "";
+    ta.addEventListener("input", ()=>{
+      if(!notas[modalDateKey]) notas[modalDateKey] = {};
+      notas[modalDateKey][hour] = ta.value;
+      saveNotas(notas);
+    });
+  });
+}
+
+function pintarHourDrop(drop){
+  const hour = drop.dataset.hour;
+  const porDia = horarios[modalDateKey] || {};
+  const ids = porDia[hour] || [];
+  if(!ids.length){
+    drop.innerHTML = `<span class="hint">Suelta aquí una iniciativa</span>`;
+    return;
+  }
+  drop.innerHTML = ids.map(id=>{
+    const item = data.find(d=>d.id===id);
+    if(!item) return "";
+    return `
+      <div class="chip" data-cid="${id}">
+        <span class="chip-dot" style="background:${item.color}"></span>
+        ${item.n}
+        <span class="chip-x" data-quitar-hora="${hour}" data-quitar-id="${id}">✕</span>
+      </div>
+    `;
+  }).join("");
+
+  drop.querySelectorAll("[data-quitar-hora]").forEach(x=>{
+    x.addEventListener("click", e=>{
+      e.stopPropagation();
+      quitarDeHora(modalDateKey, x.dataset.quitarHora, Number(x.dataset.quitarId));
+    });
+  });
+}
+
+function asignarAHora(key, hour, id){
+  if(!horarios[key]) horarios[key] = {};
+  if(!horarios[key][hour]) horarios[key][hour] = [];
+  // Una iniciativa solo puede estar en UN bloque horario por día — si ya
+  // estaba en otro bloque ese mismo día, se saca de ahí antes de ponerla
+  // en el nuevo (arrastrarla la "mueve", no la duplica).
+  Object.keys(horarios[key]).forEach(h=>{
+    horarios[key][h] = horarios[key][h].filter(x=>x!==id);
+  });
+  if(!horarios[key][hour].includes(id)) horarios[key][hour].push(id);
+
+  // Si venía de la asignación "vieja" sin hora, se saca de ahí también.
+  if(calendar[key]) calendar[key] = calendar[key].filter(x=>x!==id);
+
+  saveHorarios(horarios);
+  saveCal(calendar);
+  renderHourRows();
+  renderCalendar();
+}
+
+function quitarDeHora(key, hour, id){
+  if(horarios[key] && horarios[key][hour]){
+    horarios[key][hour] = horarios[key][hour].filter(x=>x!==id);
+  }
+  saveHorarios(horarios);
+  renderHourRows();
+  renderCalendar();
 }
 
 document.getElementById("modalClose").addEventListener("click", ()=>{
