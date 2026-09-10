@@ -13,6 +13,8 @@
   window.__SCRIPT_URL__ = 'https://script.google.com/macros/s/AKfycbxA_Iy0Zr4YOl6LFsN1oEq74Cb-0MVM0pS4Gs-3-X5GLtikCY1fKK4Y77ecjeU6pwd6/exec';
 </script>
 <script src="google-script-shim.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="admin-session.js"></script>
 <style>
   :root {
     --bg: #F4F3EF; --surface: #FFFFFF; --surface-2: #EEECEA;
@@ -117,10 +119,10 @@
 </style>
 <div id="polchile-nav">
   <span class="nav-logo" onclick="window.top.location.href='https://melodic-dasik-d903ff.netlify.app/command-center/'">&#x2B21; POLCHILE</span>
-  <button onclick="window.top.location.href='https://cockpit-comericial-web.netlify.app/'">COMERCIAL</button>
+  <button onclick="AdminSession.irCon('https://cockpit-comericial-web.netlify.app/')">COMERCIAL</button>
   <button class="active">PRODUCCION</button>
-  <button onclick="window.top.location.href='https://dashboard-finanzasweb.netlify.app/'">FINANZAS</button>
-  <button onclick="window.top.location.href='https://calendario-despachos.netlify.app/'">CALENDARIO</button>
+  <button onclick="AdminSession.irCon('https://dashboard-finanzasweb.netlify.app/')">FINANZAS</button>
+  <button onclick="AdminSession.irCon('https://calendario-despachos.netlify.app/')">CALENDARIO</button>
   <span class="nav-time" id="nav-clock"></span>
 </div>
 <script>
@@ -1249,7 +1251,9 @@ function App() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+AdminSession.iniciar(function () {
+  ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+});
 </script>
 </body>
 </html>
