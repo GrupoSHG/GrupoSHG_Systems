@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -735,12 +736,9 @@ function pintarHourDrop(drop){
 function asignarAHora(key, hour, id){
   if(!horarios[key]) horarios[key] = {};
   if(!horarios[key][hour]) horarios[key][hour] = [];
-  // Una iniciativa solo puede estar en UN bloque horario por día — si ya
-  // estaba en otro bloque ese mismo día, se saca de ahí antes de ponerla
-  // en el nuevo (arrastrarla la "mueve", no la duplica).
-  Object.keys(horarios[key]).forEach(h=>{
-    horarios[key][h] = horarios[key][h].filter(x=>x!==id);
-  });
+  // Una iniciativa PUEDE repetirse en varios bloques horarios el mismo día
+  // (ej. trabajar en algo de 9 a 10 y otra vez de 15 a 16) — solo se evita
+  // que quede duplicada dentro del MISMO bloque si la arrastras dos veces ahí.
   if(!horarios[key][hour].includes(id)) horarios[key][hour].push(id);
 
   // Si venía de la asignación "vieja" sin hora, se saca de ahí también.
