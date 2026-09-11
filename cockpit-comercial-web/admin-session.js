@@ -1,0 +1,147 @@
+// ============================================================================
+// admin-session.js — Login único (Supabase Auth) + paso de sesión entre los
+// 4 dashboards de Polchile vía token en la URL.
+//
+// Se copia IGUAL en los 4 sitios (mismo patrón que google-script-shim.js).
+//
+// USO en cada HTML (index.html, aceros.html, plan.html, ejecutivo.html...):
+//
+//   1. Antes de este script, cargar el cliente de Supabase:
+//      <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+//      <script src="admin-session.js"></script>
+//
+//   2. Antes de montar React, envolver el arranque así:
+//        AdminSession.iniciar(function () {
+//          ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+//        });
+//      (en vez de llamar a ReactDOM.createRoot directo)
+//
+//   3. En los botones del nav que saltan a OTRO dashboard, en vez de:
+//        onClick={() => window.top.location.href = 'https://otro.netlify.app/'}
+//      usar:
+//        onClick={() => AdminSession.irCon('https://otro.netlify.app/')}
+// ============================================================================
+
+(function (global) {
+  const SUPABASE_URL      = 'https://ffxopvzxyeacpbtxuagu.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_7UxU-do4iR5rP7Fnx8kQiw_XqDLMaHc';
+  const STORAGE_KEY       = 'polchile_admin_session';
+
+  let supabaseClient = null;
+
+  function getClient() {
+    if (!supabaseClient) {
+      if (!global.supabase) {
+        throw new Error('Falta cargar supabase-js antes de admin-session.js (https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2)');
+      }
+      supabaseClient = global.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        auth: { persistSession: true, storageKey: STORAGE_KEY, autoRefreshToken: true }
+      });
+    }
+    return supabaseClient;
+  }
+
+  // Arma la URL de destino con el token de sesión actual pegado (si hay
+  // sesión activa). Si no hay sesión, devuelve la URL tal cual.
+  function urlConSesion(urlDestino) {
+    return getClient().auth.getSession().then(function (res) {
+      const session = res && res.data && res.data.session;
+      if (!session) return urlDestino;
+      const u = new URL(urlDestino);
+      u.hash = 'access_token=' + encodeURIComponent(session.access_token) +
+               '&refresh_token=' + encodeURIComponent(session.refresh_token);
+      return u.toString();
+    });
+  }
+
+  // Helper directo para usar en un onClick: arma la URL con sesión y navega.
+  function irCon(urlDestino) {
+    urlConSesion(urlDestino).then(function (u) {
+      global.top.location.href = u;
+    });
+  }
+
+  // Si llegamos con un token pegado en el hash de la URL (viniendo de otro
+  // dashboard), lo adopta como sesión local y limpia la URL visible.
+  function adoptarSesionDeURL() {
+    const hash = global.location.hash || '';
+    if (hash.indexOf('access_token=') === -1) return Promise.resolve(false);
+
+    const params = new URLSearchParams(hash.replace(/^#/, ''));
+    const access_token  = params.get('access_token');
+    const refresh_token = params.get('refresh_token');
+    if (!access_token || !refresh_token) return Promise.resolve(false);
+
+    return getClient().auth.setSession({ access_token: access_token, refresh_token: refresh_token })
+      .then(function (res) {
+        history.replaceState(null, '', global.location.pathname + global.location.search);
+        return !res.error;
+      });
+  }
+
+  function mostrarFormularioLogin(onExito) {
+    const overlay = document.createElement('div');
+    overlay.id = 'admin-login-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:#0b0d10;display:flex;align-items:center;justify-content:center;z-index:99999;font-family:"Helvetica Neue",Helvetica,sans-serif;';
+    overlay.innerHTML =
+      '<div style="background:#fff;border-radius:14px;padding:36px 34px;width:320px;box-shadow:0 20px 60px rgba(0,0,0,0.3);">' +
+        '<div style="font-size:11px;font-weight:700;letter-spacing:2px;color:#6366F1;margin-bottom:4px;">&#x2B21; POLCHILE</div>' +
+        '<div style="font-size:17px;font-weight:600;margin-bottom:22px;">Acceso administrador</div>' +
+        '<input id="admin-login-email" type="email" placeholder="Correo" autocomplete="username" style="width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:8px;margin-bottom:10px;font-size:13px;box-sizing:border-box;" />' +
+        '<input id="admin-login-pass" type="password" placeholder="Contraseña" autocomplete="current-password" style="width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:8px;margin-bottom:14px;font-size:13px;box-sizing:border-box;" />' +
+        '<div id="admin-login-error" style="color:#C94F28;font-size:11.5px;margin-bottom:10px;display:none;"></div>' +
+        '<button id="admin-login-btn" style="width:100%;padding:11px;border:none;border-radius:8px;background:#6366F1;color:#fff;font-weight:600;font-size:13px;cursor:pointer;">Entrar</button>' +
+      '</div>';
+    document.body.appendChild(overlay);
+
+    const btn     = overlay.querySelector('#admin-login-btn');
+    const emailEl = overlay.querySelector('#admin-login-email');
+    const passEl  = overlay.querySelector('#admin-login-pass');
+    const errorEl = overlay.querySelector('#admin-login-error');
+
+    function intentar() {
+      errorEl.style.display = 'none';
+      btn.disabled = true; btn.textContent = 'Entrando…';
+      getClient().auth.signInWithPassword({ email: emailEl.value.trim(), password: passEl.value })
+        .then(function (res) {
+          btn.disabled = false; btn.textContent = 'Entrar';
+          if (res.error) {
+            errorEl.textContent = 'Credenciales incorrectas.';
+            errorEl.style.display = 'block';
+            return;
+          }
+          overlay.remove();
+          onExito();
+        });
+    }
+
+    btn.addEventListener('click', intentar);
+    passEl.addEventListener('keydown', function (e) { if (e.key === 'Enter') intentar(); });
+  }
+
+  // Punto de entrada: llama a callback() si ya hay sesión válida (propia o
+  // recién adoptada desde la URL), o muestra el login si no la hay.
+  function iniciar(callback) {
+    adoptarSesionDeURL().then(function () {
+      return getClient().auth.getSession();
+    }).then(function (res) {
+      const session = res && res.data && res.data.session;
+      if (session) {
+        callback();
+      } else {
+        mostrarFormularioLogin(callback);
+      }
+    });
+  }
+
+  function cerrarSesion() {
+    getClient().auth.signOut().then(function () { global.location.reload(); });
+  }
+
+  global.AdminSession = {
+    iniciar: iniciar,
+    irCon: irCon,
+    urlConSesion: urlConSesion,
+    cerrarSesion: cerrarSesion
+  };
+})(window);

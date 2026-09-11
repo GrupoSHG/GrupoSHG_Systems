@@ -21,9 +21,9 @@
 <div id="polchile-nav">
   <span class="nav-logo">⬡ POLCHILE</span>
   <a href="https://cockpit-comericial-web.netlify.app/" class="active">COMERCIAL</a>
-  <a href="https://polchile-produccion.netlify.app/">PRODUCCION</a>
-  <a href="https://dashboard-finanzasweb.netlify.app/">FINANZAS</a>
-  <a href="https://calendario-despachos.netlify.app/">CALENDARIO</a>
+  <a href="https://polchile-produccion.netlify.app/" onclick="event.preventDefault(); AdminSession.irCon('https://polchile-produccion.netlify.app/');">PRODUCCION</a>
+  <a href="https://dashboard-finanzasweb.netlify.app/" onclick="event.preventDefault(); AdminSession.irCon('https://dashboard-finanzasweb.netlify.app/');">FINANZAS</a>
+  <a href="https://calendario-despachos.netlify.app/" onclick="event.preventDefault(); AdminSession.irCon('https://calendario-despachos.netlify.app/');">CALENDARIO</a>
   <span class="nav-time" id="nav-clock"></span>
 </div>
 <script>
@@ -42,6 +42,10 @@
 
   <!-- Shim que reemplaza google.script.run por fetch() -->
   <script src="/google-script-shim.js"></script>
+
+  <!-- Login único de administrador (Supabase Auth) + paso de sesión entre dashboards -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="/admin-session.js"></script>
 
   <!-- Datos base + __loadLiveData (antes Data.html) -->
   <script src="/data.js"></script>
@@ -102,7 +106,9 @@
         </>
       );
     }
-    ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+    AdminSession.iniciar(function () {
+      ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+    });
   </script>
 </body>
 </html>
