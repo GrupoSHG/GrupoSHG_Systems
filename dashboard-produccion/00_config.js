@@ -63,10 +63,10 @@ const PRESUPUESTO_MENSUAL = [383.4, 421.2, 437.4, 367.2, 448.2, 502.2, 459.0, 46
 // SHIFT_START_HOUR: turno empieza a las 08:00.
 const SHIFT_START_HOUR = 8;
 
-// META_POR_HORA: 170 m²/jornada de 9h (misma jornada que PLAN_CONFIG.jornadaH
-// en 05_plan.js) → 170/9 ≈ 18.89 m²/h, igual para las 7 prensas.
+// META_POR_HORA: óptimo real de 25 m²/h por prensa (actualizado — antes
+// se usaba 170 m²/jornada de 9h ≈ 18.89 m²/h, valor desactualizado).
 const META_POR_HORA = {
-  P1: 18.89, P2: 18.89, P3: 18.89, P4: 18.89, P5: 18.89, P6: 18.89, P7: 18.89
+  P1: 25, P2: 25, P3: 25, P4: 25, P5: 25, P6: 25, P7: 25
 };
 
 function parseDateCustom(val) {
