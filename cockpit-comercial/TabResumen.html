@@ -29,7 +29,7 @@
     header:   { display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:24 },
     h1:       { fontSize:20, fontWeight:700, color:'#1a2b4a', margin:0 },
     badgeMes: { background:'#1e3a6e', color:'#fff', padding:'4px 14px', borderRadius:20, fontSize:12, fontWeight:700 },
-    grid:     { display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:20 },
+    grid:     { display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:20 },
     card:     { background:'#fff', borderRadius:12, border:'1px solid #dce3ef', overflow:'hidden', boxShadow:'0 2px 8px rgba(0,0,0,0.05)', display:'flex', flexDirection:'column' },
     cardHead: { padding:'14px 18px', display:'flex', alignItems:'center', gap:10 },
     inicial:  { width:36, height:36, borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center', fontWeight:800, fontSize:14, color:'#fff', flexShrink:0 },
@@ -145,6 +145,30 @@
     );
   }
 
+  function CardHEA({ data, loading, error }) {
+    if (loading) return <div style={S.loader}>⏳ Cargando HEA...</div>;
+    if (error)   return <div style={{...S.loader, color:'#c0392b'}}>❌ {error}</div>;
+    if (!data)   return <div style={S.loader}>Sin datos</div>;
+    return (
+      <div style={S.body}>
+        <div style={{...S.kpiMain, background:'#5b2c6f'}}>
+          <div style={S.kpiEtq}>Ventas MTD</div>
+          <div style={S.kpiMonto}>{fmtCLP(data.ventasMTD)}</div>
+          <div style={S.kpiSub}>{data.cantidadOTs} OTs facturables este mes</div>
+        </div>
+        <div style={S.secTitle}>Detalle</div>
+        <div style={S.row}>
+          <span style={S.lbl}>Cantidad de OTs</span>
+          <span style={{...S.val, color:'#5b2c6f'}}>{data.cantidadOTs}</span>
+        </div>
+        <div style={S.row}>
+          <span style={S.lbl}>Ticket promedio</span>
+          <span style={{...S.val, color:'#5b2c6f'}}>{fmtCLP(data.cantidadOTs > 0 ? data.ventasMTD / data.cantidadOTs : 0)}</span>
+        </div>
+      </div>
+    );
+  }
+
   function ResumenTab() {
     const [polchile, setPolchile] = useState(null);
     const [m5,       setM5]       = useState(null);
@@ -152,6 +176,9 @@
     const [loadingM, setLoadingM] = useState(true);
     const [errorP,   setErrorP]   = useState(null);
     const [errorM,   setErrorM]   = useState(null);
+    const [hea,       setHea]       = useState(null);
+    const [loadingH,  setLoadingH]  = useState(true);
+    const [errorH,    setErrorH]    = useState(null);
 
     const now      = new Date();
     const meses    = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
@@ -185,6 +212,15 @@
         })
         .withFailureHandler(e => { setErrorM(e.message); setLoadingM(false); })
         .getResumenM5Chipax();
+
+      google.script.run
+        .withSuccessHandler(d => {
+          if (d && d.error) setErrorH(d.error);
+          else              setHea(d);
+          setLoadingH(false);
+        })
+        .withFailureHandler(e => { setErrorH(e.message); setLoadingH(false); })
+        .getResumenHEA();
     }, []);
 
     const empresas = [
@@ -205,6 +241,12 @@
         chipTxt:'⏳ Próximo', chipSt:S.chipWip,
         body: <div style={S.placeh}><div style={{fontSize:32,marginBottom:10}}>🏗️</div>KPIs en configuración.<br/>Próximamente disponible.</div>,
         accion: null, // sin botón
+      },
+      {
+        id:'hea',      nombre:'HEA',           subtit:'Hojalatería El Abuelo', color:'#5b2c6f', ini:'H',
+        chipTxt:'● LIVE', chipSt:S.chipLive,
+        body: <CardHEA data={hea} loading={loadingH} error={errorH}/>,
+        accion: null, // sin dashboard propio todavía
       },
     ];
 

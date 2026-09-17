@@ -309,6 +309,7 @@ function doGet(e) {
         case 'getResumenPolchile':    result = getResumenPolchile();    break;
         case 'getResumenM5Chipax':    result = getResumenM5Chipax();    break;
         case 'getChipaxDashboard':    result = getChipaxDashboard();    break;
+        case 'getResumenHEA':          result = getResumenHEA();          break;
         default: result = { error: 'Acción desconocida: ' + action };
       }
     } catch (err) {
@@ -371,9 +372,10 @@ function getSupabaseConfig_() {
   return { url: url, key: key };
 }
 
-function supabaseSelect_(tabla, filtro) {
+function supabaseSelect_(tabla, filtro, schema) {
   var cfg = getSupabaseConfig_();
   var qs  = filtro || 'select=*';
+  var perfil = schema || 'shg_dashboards'; // 'hea' para las tablas de Hojalatería El Abuelo
   var PAGE_SIZE = 1000; // límite por defecto de la API REST de Supabase
   var todasLasFilas = [];
   var desde = 0;
@@ -385,7 +387,7 @@ function supabaseSelect_(tabla, filtro) {
       headers: {
         'apikey': cfg.key,
         'Authorization': 'Bearer ' + cfg.key,
-        'Accept-Profile': 'shg_dashboards',
+        'Accept-Profile': perfil,
         'Range-Unit': 'items',
         'Range': desde + '-' + (desde + PAGE_SIZE - 1)
       },
@@ -406,6 +408,54 @@ function supabaseSelect_(tabla, filtro) {
   }
 
   return todasLasFilas;
+}
+
+// ======================================================================
+// HEA (Hojalatería El Abuelo) — resumen de ventas del mes
+// Tabla 'ots' en el schema 'hea' del mismo proyecto de Supabase consolidado
+// (ffxopvzxyeacpbtxuagu) que ya usa Cockpit — no requiere credenciales
+// nuevas, solo el parámetro de schema agregado arriba.
+//
+// Criterio de "venta válida" (confirmado revisando los datos reales):
+// situacion IN ('Terminado','Entregado') AND tipo_doc <> 'Nula'
+// (excluye OTs anuladas y las que siguen en proceso).
+// ======================================================================
+function getResumenHEA() {
+  try {
+    // 'fecha' es TEXT en formato DD/MM/YYYY (no se puede filtrar por rango
+    // directo en Postgrest), así que el filtro de mes se hace acá.
+    var filas = supabaseSelect_(
+      'ots',
+      'select=fecha,venta&situacion=in.(Terminado,Entregado)&tipo_doc=neq.Nula',
+      'hea'
+    );
+
+    var hoy        = new Date();
+    var mesActual  = hoy.getMonth();
+    var anioActual = hoy.getFullYear();
+
+    var ventasMTD = 0, cantidadOTs = 0;
+
+    filas.forEach(function (row) {
+      var fechaTxt = row.fecha;
+      if (!fechaTxt) return;
+      var partes = fechaTxt.split('/'); // DD/MM/YYYY
+      if (partes.length !== 3) return;
+      var mes  = parseInt(partes[1], 10) - 1; // 0-indexado
+      var anio = parseInt(partes[2], 10);
+      if (mes !== mesActual || anio !== anioActual) return;
+
+      ventasMTD += parseFloat(row.venta) || 0;
+      cantidadOTs++;
+    });
+
+    return {
+      ventasMTD:   ventasMTD,
+      cantidadOTs: cantidadOTs,
+    };
+  } catch (e) {
+    return { error: 'Error getResumenHEA: ' + e.toString() };
+  }
 }
 
 // ======================================================================
