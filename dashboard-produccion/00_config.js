@@ -22,6 +22,8 @@ function doGet(e) {
         case 'getCatalogoStock':       result = getCatalogoStock();       break;
         case 'getM2MensualesPA': result = getM2MensualesPA(); break;
         case 'getEficienciaEjecutiva': result = getEficienciaEjecutiva(); break;
+        case 'getBacklogPorProducto': result = getBacklogPorProducto(); break;
+        case 'getDatosEjecutivo': result = getDatosEjecutivo(); break;
         default: result = { error: 'Acción desconocida: ' + action };
       }
     } catch (err) {
