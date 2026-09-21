@@ -183,6 +183,16 @@ const estilosEjecutivo = `
   .ej-sin-datos { background: var(--surface); border: 1px dashed var(--border-2); border-radius: 14px; padding: 50px 30px;
     text-align: center; color: var(--text-3); }
   .ej-sin-datos-icono { font-size: 32px; margin-bottom: 10px; }
+
+  .ej-backlog-tabla { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; overflow: hidden; }
+  .ej-backlog-tabla th { text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-3);
+    padding: 12px 18px; background: var(--surface-2); border-bottom: 1px solid var(--border); }
+  .ej-backlog-tabla td { padding: 13px 18px; font-size: 13px; border-bottom: 1px solid var(--border-2); }
+  .ej-backlog-tabla tr:last-child td { border-bottom: none; }
+  .ej-backlog-dias { font-weight: 700; font-size: 15px; }
+  .ej-backlog-badge { font-size: 10px; font-weight: 700; padding: 3px 10px; border-radius: 12px; text-transform: uppercase; }
+  .ej-backlog-nota { font-size: 11px; color: var(--text-3); margin-top: 10px; }
 `;
 
 const PERIODOS = [
@@ -256,19 +266,62 @@ function SinDatos({ mensaje }) {
   );
 }
 
+function TablaBacklog({ data }) {
+  if (!data) return null;
+  if (data.error) return <div className="sys-error"><span>⚠️ {data.error}</span></div>;
+
+  return (
+    <>
+      <div className="ej-section-title">Backlog por Producto (días para liquidar el pendiente)</div>
+      <table className="ej-backlog-tabla">
+        <thead>
+          <tr>
+            <th>Producto</th>
+            <th style={{textAlign:'right'}}>Pendiente (m²)</th>
+            <th style={{textAlign:'right'}}>Días de Backlog</th>
+            <th style={{textAlign:'center'}}>Estado</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.backlog.map(p=>(
+            <tr key={p.producto}>
+              <td style={{fontWeight:600}}>{p.producto}</td>
+              <td style={{textAlign:'right',fontFamily:'monospace'}}>{p.pendiente_m2.toLocaleString('es-CL')}</td>
+              <td style={{textAlign:'right'}} className="ej-backlog-dias">{p.dias===null?'—':p.dias+' días'}</td>
+              <td style={{textAlign:'center'}}>
+                <span className="ej-backlog-badge" style={{background:ESTADO_BG[p.estado]||'#F1F5F9',color:ESTADO_COLOR[p.estado]||'var(--text-3)'}}>
+                  {p.estado==='sin_dato'?'Sin dato':p.estado}
+                </span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="ej-backlog-nota">
+        Ritmo real considerado: {data.ritmo_diario_general_m2.toLocaleString('es-CL')} m²/día (promedio de {data.dias_con_datos_considerados} días hábiles con datos, todas las prensas) — aproximación general, no desglosada por producto.
+      </div>
+    </>
+  );
+}
+
 function App() {
   const [sysError, setSysError] = useState(null);
   const [data, setData]         = useState(null);
   const [dimension, setDimension] = useState('rendimiento');
   const [periodo, setPeriodo]     = useState('diario');
+  const [backlog, setBacklog]     = useState(null);
 
   const fetchData = () => {
     if (typeof google === 'undefined') return;
     setSysError(null);
+    // Una sola llamada combinada — antes eran 2 llamadas separadas, cada
+    // una releyendo "M2 Producidos" completa desde cero, lo que se
+    // empezó a poner lento y causaba timeouts.
     google.script.run.withSuccessHandler(res => {
-      if (res?.error) setSysError("Error Eficiencia: " + res.error);
-      setData(res);
-    }).getEficienciaEjecutiva();
+      if (res?.error) { setSysError("Error Ejecutivo: " + res.error); return; }
+      setData(res.eficiencia);
+      setBacklog(res.backlog);
+    }).getDatosEjecutivo();
   };
 
   useEffect(() => {
@@ -328,6 +381,8 @@ function App() {
           {dimension === 'calidad'        && <SinDatos mensaje={data.calidad.mensaje} />}
         </>
       )}
+
+      <TablaBacklog data={backlog} />
 
       <footer style={{textAlign:'center',marginTop:40,color:'var(--text-3)',fontSize:11}}>Polchile · Dashboard Ejecutivo</footer>
     </main>
