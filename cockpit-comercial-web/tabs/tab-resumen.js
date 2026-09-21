@@ -1,4 +1,3 @@
-<script type="text/babel">
 // ============================================================
 // ResumenTab  — Resumen grupo empresarial (Polchile / M5 / CYS)
 // Con botones de navegación a cada tab de empresa
@@ -296,4 +295,3 @@
 
   window.ResumenTab = ResumenTab;
 })();
-</script>
