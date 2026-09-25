@@ -69,6 +69,9 @@
   function irA(tabId) {
     if (window.__setTab) window.__setTab(tabId);
   }
+  function irAExterno(url) {
+    window.top.location.href = url;
+  }
 
   function CardPolchile({ data, loading, error }) {
     if (loading) return <div style={S.loader}>⏳ Cargando Polchile...</div>;
@@ -245,7 +248,7 @@
         id:'hea',      nombre:'HEA',           subtit:'Hojalatería El Abuelo', color:'#5b2c6f', ini:'H',
         chipTxt:'● LIVE', chipSt:S.chipLive,
         body: <CardHEA data={hea} loading={loadingH} error={errorH}/>,
-        accion: null, // sin dashboard propio todavía
+        accion: { label: 'Ver Dashboard HEA', url: 'https://hojalateria-el-abuelo.web.app/', color: '#5b2c6f' },
       },
     ];
 
@@ -274,7 +277,7 @@
                 {e.accion ? (
                   <button
                     style={{...S.btnAccion, background: e.accion.color}}
-                    onClick={() => irA(e.accion.tab)}
+                    onClick={() => e.accion.url ? irAExterno(e.accion.url) : irA(e.accion.tab)}
                     onMouseEnter={(ev) => ev.currentTarget.style.opacity = '0.85'}
                     onMouseLeave={(ev) => ev.currentTarget.style.opacity = '1'}
                   >
