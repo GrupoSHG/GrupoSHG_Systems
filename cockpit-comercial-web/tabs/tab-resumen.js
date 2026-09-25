@@ -215,14 +215,10 @@
         .withFailureHandler(e => { setErrorM(e.message); setLoadingM(false); })
         .getResumenM5Chipax();
 
-      google.script.run
-        .withSuccessHandler(d => {
-          if (d && d.error) setErrorH(d.error);
-          else              setHea(d);
-          setLoadingH(false);
-        })
-        .withFailureHandler(e => { setErrorH(e.message); setLoadingH(false); })
-        .getResumenHEA();
+      // HEA no tiene backend propio en este Apps Script (es una app aparte,
+      // con su propio login). Se muestra en 0 en vez de quedar cargando para siempre.
+      setHea({ ventasMTD: 0, cantidadOTs: 0 });
+      setLoadingH(false);
     }, []);
 
     const empresas = [
